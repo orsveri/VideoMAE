@@ -15,6 +15,10 @@ The codebase is mainly built with following libraries:
 
   `DS_BUILD_OPS=1 pip install deepspeed`
 
+  **Comment**: I couldn't install it with this flag. Without it, the installation was completed successfully with the newest stable Pytorch. In case of an error related to ds_kernels, install this first: 
+
+  `pip install deepspeed-kernels` [DeepSpeed-Kernels repo](https://github.com/microsoft/DeepSpeed-Kernels)
+
 - [TensorboardX](https://github.com/lanpa/tensorboardX)
 
 - [decord](https://github.com/dmlc/decord)
