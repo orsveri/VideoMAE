@@ -10,6 +10,7 @@ The codebase is mainly built with following libraries:
   Tesla **V100** (32G): CUDA 10.1 + PyTorch 1.6.0 + torchvision 0.7.0
 
 - [timm==0.4.8/0.4.12](https://github.com/rwightman/pytorch-image-models)
+  `conda install -c conda-forge timm=0.4.12`
 
 - [deepspeed==0.5.8](https://github.com/microsoft/DeepSpeed)
 
@@ -24,6 +25,8 @@ The codebase is mainly built with following libraries:
 - [decord](https://github.com/dmlc/decord)
 
 - [einops](https://github.com/arogozhnikov/einops)
+
+- `pip install tensorboardX decord einops opencv-python scipy pandas`
 
 ### Note:
 - We recommend you to use **`PyTorch >= 1.8.0`**.

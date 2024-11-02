@@ -1,4 +1,6 @@
 import os
+
+import cv2
 import numpy as np
 import math
 import sys
@@ -8,6 +10,13 @@ from mixup import Mixup
 from timm.utils import accuracy, ModelEma
 import utils
 from scipy.special import softmax
+import torchmetrics
+import matplotlib.pyplot as plt
+
+from dataset.vis_tools import threshold_curve_plots
+
+
+THRESHOLDS = np.arange(0.01, 1.0, 0.01).tolist()
 
 
 def train_class_batch(model, samples, target, criterion):
@@ -40,6 +49,9 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     else:
         optimizer.zero_grad()
 
+    preds = []
+    labels = []
+
     for data_iter_step, (samples, targets, _, _) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         step = data_iter_step // update_freq
         if step >= num_training_steps_per_epoch:
@@ -53,6 +65,9 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                 if wd_schedule_values is not None and param_group["weight_decay"] > 0:
                     param_group["weight_decay"] = wd_schedule_values[it]
 
+        # collect labels
+        labels.append(targets.cpu().detach())
+
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
 
@@ -63,10 +78,14 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             samples = samples.half()
             loss, output = train_class_batch(
                 model, samples, targets, criterion)
+            # collect predictions
+            preds.append(output.cpu().detach())
         else:
             with torch.cuda.amp.autocast():
                 loss, output = train_class_batch(
                     model, samples, targets, criterion)
+            # collect predictions
+            preds.append(output.cpu().detach())
 
         loss_value = loss.item()
 
@@ -124,15 +143,27 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         metric_logger.update(grad_norm=grad_norm)
 
         if log_writer is not None:
-            log_writer.update(loss=loss_value, head="loss")
-            log_writer.update(class_acc=class_acc, head="loss")
-            log_writer.update(loss_scale=loss_scale_value, head="opt")
-            log_writer.update(lr=max_lr, head="opt")
-            log_writer.update(min_lr=min_lr, head="opt")
-            log_writer.update(weight_decay=weight_decay_value, head="opt")
-            log_writer.update(grad_norm=grad_norm, head="opt")
+            log_writer.update(loss=loss_value, head="train")
+            log_writer.update(class_acc=class_acc, head="train")
+            log_writer.update(loss_scale=loss_scale_value, head="train_opt")
+            log_writer.update(lr=max_lr, head="train_opt")
+            log_writer.update(min_lr=min_lr, head="train_opt")
+            log_writer.update(weight_decay=weight_decay_value, head="train_opt")
+            log_writer.update(grad_norm=grad_norm, head="train_opt")
 
             log_writer.set_step()
+
+    # Calculate total metrics
+    preds = torch.cat(preds, dim=0)
+    labels = torch.cat(labels, dim=0)
+    metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(preds, labels)
+    # Log them
+    metric_logger.meters['metr_acc'].update(metr_acc, n=len(data_loader.dataset))
+    metric_logger.meters['recall'].update(recall, n=len(data_loader.dataset))
+    metric_logger.meters['precision'].update(precision, n=len(data_loader.dataset))
+    metric_logger.meters['f1'].update(f1, n=len(data_loader.dataset))
+    metric_logger.meters['auroc'].update(auroc, n=len(data_loader.dataset))
+    metric_logger.meters['ap'].update(ap, n=len(data_loader.dataset))
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -150,6 +181,9 @@ def validation_one_epoch(data_loader, model, device):
     # switch to evaluation mode
     model.eval()
 
+    preds = []
+    labels = []
+
     for batch in metric_logger.log_every(data_loader, 10, header):
         videos = batch[0]
         target = batch[1]
@@ -161,25 +195,39 @@ def validation_one_epoch(data_loader, model, device):
             output = model(videos)
             loss = criterion(output, target)
 
-        #acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        acc1, acc5 = accuracy(output, target, topk=(1, 2))
-        # TODO: mAP, roc auc
+        # collect predictions
+        preds.append(output.cpu().detach())
+        labels.append(target.cpu().detach())
+
+        acc = accuracy(output, target, topk=(1,))[0]
 
         batch_size = videos.shape[0]
         metric_logger.update(loss=loss.item())
-        metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
-        metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+        metric_logger.meters['acc'].update(acc.item(), n=batch_size)
+
+    # Calculate total metrics
+    preds = torch.cat(preds, dim=0)
+    labels = torch.cat(labels, dim=0)
+    metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(preds, labels)
+    # Log them
+    metric_logger.meters['metr_acc'].update(metr_acc, n=len(data_loader.dataset))
+    metric_logger.meters['recall'].update(recall, n=len(data_loader.dataset))
+    metric_logger.meters['precision'].update(precision, n=len(data_loader.dataset))
+    metric_logger.meters['f1'].update(f1, n=len(data_loader.dataset))
+    metric_logger.meters['auroc'].update(auroc, n=len(data_loader.dataset))
+    metric_logger.meters['ap'].update(ap, n=len(data_loader.dataset))
+
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
-          .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
+    print('* Acc@1 {top1.global_avg:.3f} AP {ap} loss {losses.global_avg:.3f}'
+          .format(top1=metric_logger.acc, ap=ap, losses=metric_logger.loss))
 
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
 
 @torch.no_grad()
-def final_test(data_loader, model, device, file):
+def final_test(data_loader, model, device, file, plot_dir=None):
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -188,13 +236,14 @@ def final_test(data_loader, model, device, file):
     # switch to evaluation mode
     model.eval()
     final_result = []
+
+    preds = []
+    labels = []
     
     for batch in metric_logger.log_every(data_loader, 10, header):
         videos = batch[0]
         target = batch[1]
         ids = batch[2]
-        chunk_nb = batch[3]
-        split_nb = batch[4]
         videos = videos.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
 
@@ -204,30 +253,86 @@ def final_test(data_loader, model, device, file):
             loss = criterion(output, target)
 
         for i in range(output.size(0)):
-            string = "{} {} {} {} {}\n".format(ids[i], \
-                                                str(output.data[i].cpu().numpy().tolist()), \
-                                                str(int(target[i].cpu().numpy())), \
-                                                str(int(chunk_nb[i].cpu().numpy())), \
-                                                str(int(split_nb[i].cpu().numpy())))
+            string = f"{ids[i]} {output.data[i].cpu().numpy().tolist()} {int(target[i].cpu().numpy())}\n"
             final_result.append(string)
 
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        # collect predictions
+        preds.append(output.cpu().detach())
+        labels.append(target.cpu().detach())
+
+        acc1 = accuracy(output, target, topk=(1,))[0]
 
         batch_size = videos.shape[0]
         metric_logger.update(loss=loss.item())
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
-        metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)
+
+    # calculate metrics
+    preds = torch.cat(preds, dim=0)
+    labels = torch.cat(labels, dim=0)
+    preds = torch.nn.functional.softmax(preds, dim=1)
+    values = preds[:, 1]
+    _, preds = torch.max(preds, 1)
+    metr_acc = torchmetrics.functional.accuracy(preds=preds, target=labels, task="binary").item()
+    recall = torchmetrics.functional.recall(preds=preds, target=labels, task="binary").item()
+    precision = torchmetrics.functional.precision(preds=preds, target=labels, task="binary").item()
+    f1 = torchmetrics.functional.f1_score(preds=preds, target=labels, task="binary").item()
+    confmat = torchmetrics.functional.confusion_matrix(preds=preds, target=labels, task="binary").detach().tolist()
+    auroc = torchmetrics.functional.auroc(
+        preds=values,
+        target=labels,
+        task="binary",
+        thresholds=THRESHOLDS
+    ).item()
+    ap = torchmetrics.functional.average_precision(
+        preds=values,
+        target=labels,
+        task="binary",
+        thresholds=THRESHOLDS
+    ).item()
+    pr_curve = torchmetrics.functional.precision_recall_curve(
+        preds=values,
+        target=labels,
+        task="binary",
+        thresholds=THRESHOLDS
+    )
+    roc_curve = torchmetrics.functional.roc(
+        preds=values,
+        target=labels,
+        task="binary",
+        thresholds=THRESHOLDS
+    )
+    print("\n===================================")
+    print(f"mAP: {ap}, auroc: {auroc}, acc: {metr_acc}")
+    print(f"P@0.5: {precision}, R@0.5: {recall}, F1@0.5: {f1}")
+    print(f"Confmat: \n\t{confmat[0][0]} | {confmat[0][1]} \n\t{confmat[1][0]} | {confmat[1][1]}")
+    print(f"----------------------------")
+    if plot_dir is not None:
+        os.makedirs(plot_dir, exist_ok=True)
+        pr_precision, pr_recall, pr_thresholds = [item.detach().tolist() for item in pr_curve]
+        roc_fpr, roc_tpr, roc_thresholds = [item.detach().tolist() for item in roc_curve]
+        fig2 = threshold_curve_plots(
+            x_values=pr_recall, y_values=pr_precision, thresholds=pr_thresholds + [1.],
+            x_label="Recall", y_label="Precision", plot_name="PR curve",
+            score=True, to_img=True
+        )
+        fig3 = threshold_curve_plots(
+            x_values=roc_fpr, y_values=roc_tpr, thresholds=roc_thresholds,
+            x_label="FP rate", y_label="TP rate", plot_name="ROC curve",
+            score=True, to_img=True
+        )
+        cv2.imwrite(os.path.join(plot_dir, "pr.jpg"), fig2)
+        cv2.imwrite(os.path.join(plot_dir, "roc.jpg"), fig3)
 
     if not os.path.exists(file):
         os.mknod(file)
     with open(file, 'w') as f:
-        f.write("{}, {}\n".format(acc1, acc5))
+        f.write("{}\n".format(acc1))
         for line in final_result:
             f.write(line)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print('* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}'
-          .format(top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss))
+    print('* Acc@1 {top1.global_avg:.3f} loss {losses.global_avg:.3f}'
+          .format(top1=metric_logger.acc1, losses=metric_logger.loss))
 
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
@@ -235,7 +340,6 @@ def final_test(data_loader, model, device, file):
 def merge(eval_path, num_tasks):
     dict_feats = {}
     dict_label = {}
-    dict_pos = {}
     print("Reading individual output files")
 
     for x in range(num_tasks):
@@ -245,18 +349,12 @@ def merge(eval_path, num_tasks):
             line = line.strip()
             name = line.split('[')[0]
             label = line.split(']')[1].split(' ')[1]
-            chunk_nb = line.split(']')[1].split(' ')[2]
-            split_nb = line.split(']')[1].split(' ')[3]
             data = np.fromstring(line.split('[')[1].split(']')[0], dtype=float, sep=',')
             data = softmax(data)
             if not name in dict_feats:
                 dict_feats[name] = []
                 dict_label[name] = 0
-                dict_pos[name] = []
-            if chunk_nb + split_nb in dict_pos[name]:
-                continue
             dict_feats[name].append(data)
-            dict_pos[name].append(chunk_nb + split_nb)
             dict_label[name] = label
     print("Computing final results")
 
@@ -268,11 +366,10 @@ def merge(eval_path, num_tasks):
     p = Pool(64)
     ans = p.map(compute_video, input_lst)
     top1 = [x[1] for x in ans]
-    top5 = [x[2] for x in ans]
     pred = [x[0] for x in ans]
-    label = [x[3] for x in ans]
-    final_top1 ,final_top5 = np.mean(top1), np.mean(top5)
-    return final_top1*100 ,final_top5*100
+    label = [x[2] for x in ans]
+    final_top1 = np.mean(top1)
+    return final_top1*100
 
 def compute_video(lst):
     i, video_id, data, label = lst
@@ -280,5 +377,39 @@ def compute_video(lst):
     feat = np.mean(feat, axis=0)
     pred = np.argmax(feat)
     top1 = (int(pred) == int(label)) * 1.0
-    top5 = (int(label) in np.argsort(-feat)[:5]) * 1.0
-    return [pred, top1, top5, int(label)]
+    return [pred, top1, int(label)]
+
+def calculate_metrics(preds, labels):
+    preds = torch.nn.functional.softmax(preds, dim=1)
+    values = preds[:, 1]
+    _, preds = torch.max(preds, 1)
+    metr_acc = torchmetrics.functional.accuracy(preds=preds, target=labels, task="binary").item()
+    recall = torchmetrics.functional.recall(preds=preds, target=labels, task="binary").item()
+    precision = torchmetrics.functional.precision(preds=preds, target=labels, task="binary").item()
+    f1 = torchmetrics.functional.f1_score(preds=preds, target=labels, task="binary").item()
+    confmat = torchmetrics.functional.confusion_matrix(preds=preds, target=labels, task="binary").detach().tolist()
+    auroc = torchmetrics.functional.auroc(
+        preds=values,
+        target=labels,
+        task="binary",
+        thresholds=THRESHOLDS
+    ).item()
+    ap = torchmetrics.functional.average_precision(
+        preds=values,
+        target=labels,
+        task="binary",
+        thresholds=THRESHOLDS
+    ).item()
+    pr_curve = torchmetrics.functional.precision_recall_curve(
+        preds=values,
+        target=labels,
+        task="binary",
+        thresholds=THRESHOLDS
+    )
+    roc_curve = torchmetrics.functional.roc(
+        preds=values,
+        target=labels,
+        task="binary",
+        thresholds=THRESHOLDS
+    )
+    return metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve

@@ -17,7 +17,8 @@ from timm.utils import ModelEma
 from optim_factory import create_optimizer, get_parameter_groups, LayerDecayValueAssigner
 
 from datasets import build_dataset
-from engine_for_finetuning import train_one_epoch, validation_one_epoch, final_test, merge
+from datasets_frame import build_frame_dataset
+from engine_for_frame_finetuning import train_one_epoch, validation_one_epoch, final_test, merge
 from utils import NativeScalerWithGradNormCount as NativeScaler
 from utils import  multiple_samples_collate
 import utils
@@ -147,7 +148,8 @@ def get_args():
     parser.add_argument('--num_segments', type=int, default= 1)
     parser.add_argument('--num_frames', type=int, default= 16)
     parser.add_argument('--sampling_rate', type=int, default= 4)
-    parser.add_argument('--data_set', default='Kinetics-400', choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51','image_folder'],
+    parser.add_argument('--view_fps', type=int, default=10)  # DoTA only!
+    parser.add_argument('--data_set', default='Kinetics-400', choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51','DoTA','image_folder'],
                         type=str, help='dataset')
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
@@ -226,12 +228,19 @@ def main(args, ds_init):
 
     cudnn.benchmark = True
 
-    dataset_train, args.nb_classes = build_dataset(is_train=True, test_mode=False, args=args)
+    # dataset_train, args.nb_classes = build_dataset(is_train=True, test_mode=False, args=args)
+    # if args.disable_eval_during_finetuning:
+    #     dataset_val = None
+    # else:
+    #     dataset_val, _ = build_dataset(is_train=False, test_mode=False, args=args)
+    # dataset_test, _ = build_dataset(is_train=False, test_mode=True, args=args)
+
+    dataset_train, args.nb_classes = build_frame_dataset(is_train=True, test_mode=False, args=args)
     if args.disable_eval_during_finetuning:
         dataset_val = None
     else:
-        dataset_val, _ = build_dataset(is_train=False, test_mode=False, args=args)
-    dataset_test, _ = build_dataset(is_train=False, test_mode=True, args=args)
+        dataset_val, _ = build_frame_dataset(is_train=False, test_mode=False, args=args)
+    dataset_test, _ = build_frame_dataset(is_train=False, test_mode=True, args=args)
     
 
     num_tasks = utils.get_world_size()
@@ -480,14 +489,14 @@ def main(args, ds_init):
 
     if args.eval:
         preds_file = os.path.join(args.output_dir, str(global_rank) + '.txt')
-        test_stats = final_test(data_loader_test, model, device, preds_file)
+        test_stats = final_test(data_loader_test, model, device, preds_file,
+                                plot_dir=os.path.join(args.output_dir, "plots"))
         torch.distributed.barrier()
         if global_rank == 0:
             print("Start merging results...")
-            final_top1 ,final_top5 = merge(args.output_dir, num_tasks)
-            print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%, Top-5: {final_top5:.2f}%")
-            log_stats = {'Final top-1': final_top1,
-                        'Final Top-5': final_top5}
+            final_top1 = merge(args.output_dir, num_tasks)
+            print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%")
+            log_stats = {'Final top-1': final_top1}
             if args.output_dir and utils.is_main_process():
                 with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
                     f.write(json.dumps(log_stats) + "\n")
@@ -497,6 +506,7 @@ def main(args, ds_init):
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     max_accuracy = 0.0
+    max_ap = 0.0
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
@@ -509,6 +519,13 @@ def main(args, ds_init):
             lr_schedule_values=lr_schedule_values, wd_schedule_values=wd_schedule_values,
             num_training_steps_per_epoch=num_training_steps_per_epoch, update_freq=args.update_freq,
         )
+        if log_writer is not None:
+            log_writer.update(train_acc=train_stats['metr_acc'], head="my_train", step=epoch)
+            log_writer.update(train_ap=train_stats['ap'], head="my_train", step=epoch)
+            log_writer.update(train_auroc=train_stats['auroc'], head="my_train", step=epoch)
+            log_writer.update(train_recall=train_stats['recall'], head="my_train", step=epoch)
+            log_writer.update(train_precision=train_stats['precision'], head="my_train", step=epoch)
+            log_writer.update(train_f1=train_stats['f1'], head="my_train", step=epoch)
         if args.output_dir and args.save_ckpt:
             if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
                 utils.save_model(
@@ -516,19 +533,30 @@ def main(args, ds_init):
                     loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
         if data_loader_val is not None:
             test_stats = validation_one_epoch(data_loader_val, model, device)
-            print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats['acc1']:.1f}%")
-            if max_accuracy < test_stats["acc1"]:
-                max_accuracy = test_stats["acc1"]
+            print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats['acc']:.1f}%")
+            if max_accuracy < test_stats["acc"]:
+                max_accuracy = test_stats["acc"]
                 if args.output_dir and args.save_ckpt:
                     utils.save_model(
                         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                        loss_scaler=loss_scaler, epoch="best", model_ema=model_ema)
+                        loss_scaler=loss_scaler, epoch="bestacc", model_ema=model_ema)
+            if max_ap < test_stats["ap"]:
+                max_ap = test_stats["ap"]
+                if args.output_dir and args.save_ckpt:
+                    utils.save_model(
+                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                        loss_scaler=loss_scaler, epoch="bestap", model_ema=model_ema)
 
             print(f'Max accuracy: {max_accuracy:.2f}%')
             if log_writer is not None:
-                log_writer.update(val_acc1=test_stats['acc1'], head="perf", step=epoch)
-                log_writer.update(val_acc5=test_stats['acc5'], head="perf", step=epoch)
-                log_writer.update(val_loss=test_stats['loss'], head="perf", step=epoch)
+                log_writer.update(val_acc=test_stats['acc'], head="val", step=epoch)
+                log_writer.update(val_loss=test_stats['loss'], head="val", step=epoch)
+                log_writer.update(val_acc=test_stats['metr_acc'], head="val", step=epoch)
+                log_writer.update(val_ap=test_stats['ap'], head="val", step=epoch)
+                log_writer.update(val_auroc=test_stats['auroc'], head="val", step=epoch)
+                log_writer.update(val_recall=test_stats['recall'], head="val", step=epoch)
+                log_writer.update(val_precision=test_stats['precision'], head="val", step=epoch)
+                log_writer.update(val_f1=test_stats['f1'], head="val", step=epoch)
 
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                          **{f'val_{k}': v for k, v in test_stats.items()},
@@ -549,12 +577,11 @@ def main(args, ds_init):
     torch.distributed.barrier()
     if global_rank == 0:
         print("Start merging results...")
-        final_top1 ,final_top5 = merge(args.output_dir, num_tasks)
-        print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%, Top-5: {final_top5:.2f}%")
-        log_stats = {'Final top-1': final_top1,
-                    'Final Top-5': final_top5}
+        final_top1 = merge(args.output_dir, num_tasks)
+        print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%")
+        log_stats = {'Final top-1': final_top1}
         if args.output_dir and utils.is_main_process():
-            with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
+            with open(os.path.join(args.output_dir, "log_test.txt"), mode="a", encoding="utf-8") as f:
                 f.write(json.dumps(log_stats) + "\n")
 
 

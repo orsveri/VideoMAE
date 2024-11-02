@@ -35,7 +35,24 @@ We have successfully pre-trained and fine-tuned our VideoMAE on [Kinetics400](ht
      dataset_root/video_N.mp4  label_N
      ```
 
+- The pre-processing of **HMDB51** can be summarized into 3 steps:
+
+  1. Download the dataset from [official website](https://serre-lab.clps.brown.edu/resource/hmdb-a-large-human-motion-database/).
+
+  2. [`scripts/my_hmdb51/prepare_dataset.py`] Preprocess the dataset by changing the video extension from `.avi` to `.mp4` with the **original** height of **240px**.
+
+  3. [`scripts/my_hmdb51/prepare_dataset.py`] Generate annotations needed for dataloader ("<path_to_video> <video_class>" in annotations). The annotation usually includes `train.csv`, `val.csv` and `test.csv` ( here `test.csv` is the same as `val.csv`). The format of `*.csv` file is like:
+
+     ```
+     dataset_root/video_1.mp4  label_1
+     dataset_root/video_2.mp4  label_2
+     dataset_root/video_3.mp4  label_3
+     ...
+     dataset_root/video_N.mp4  label_N
+     ```
+
 ### Note:
 
 1. We use [decord](https://github.com/dmlc/decord) to decode the videos **on the fly** during both pre-training and fine-tuning phases.
 2. All experiments on Kinetics-400 in VideoMAE are based on [this version](https://opendatalab.com/Kinetics-400).
+3. In the .csv annotation file, the full (absolute) path to the videos is needed. So they can be placed in different folders.
