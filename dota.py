@@ -119,6 +119,7 @@ class FrameClsDataset(Dataset):
     def _prepare_views(self):
         dataset_sequences = []
         label_array = []
+        ttc = []
         sequencer = RegularSequencer(seq_frequency=self.target_fps, seq_length=self.view_len, step=self.view_step)
         N = len(self.clip_names)
         for i in range(N):
@@ -128,8 +129,10 @@ class FrameClsDataset(Dataset):
                 continue
             dataset_sequences.extend([(i, seq) for seq in sequences])
             label_array.extend([self.clip_bin_labels[i][seq[-1]] for seq in sequences])
+            ttc.extend([2.7 for seq in sequences])
         self.dataset_samples = dataset_sequences
         self.label_array = label_array
+        self.ttc = ttc
 
     def __getitem__(self, index):
         if self.mode == 'train':
@@ -147,17 +150,20 @@ class FrameClsDataset(Dataset):
                 frame_list = []
                 label_list = []
                 index_list = []
+                ttc_list = []
                 for _ in range(args.num_sample):
                     new_frames = self._aug_frame(buffer, args)
                     label = self.label_array[index]
+                    ttc = self.ttc[index]
                     frame_list.append(new_frames)
                     label_list.append(label)
                     index_list.append(index)
-                return frame_list, label_list, index_list, {}
+                    ttc_list.append(ttc)
+                return frame_list, label_list, index_list, ttc_list
             else:
                 buffer = self._aug_frame(buffer, args)
 
-            return buffer, self.label_array[index], index, {}
+            return buffer, self.label_array[index], index, self.ttc[index]
 
         elif self.mode == 'validation':
             sample = self.dataset_samples[index]
@@ -169,7 +175,7 @@ class FrameClsDataset(Dataset):
                     sample = self.dataset_samples[index]
                     buffer = self.load_images(sample, final_resize=True)
             buffer = self.data_transform(buffer)
-            return buffer, self.label_array[index], index
+            return buffer, self.label_array[index], index, self.ttc[index]
 
         elif self.mode == 'test':
             sample = self.test_dataset[index]
@@ -180,7 +186,7 @@ class FrameClsDataset(Dataset):
                 sample = self.test_dataset[index]
                 buffer = self.load_images(sample, final_resize=True)
             buffer = self.data_transform(buffer)
-            return buffer, self.test_label_array[index], index
+            return buffer, self.test_label_array[index], index, self.ttc[index]
         else:
             raise NameError('mode {} unkown'.format(self.mode))
 

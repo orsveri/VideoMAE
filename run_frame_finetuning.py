@@ -54,6 +54,9 @@ def get_args():
     parser.add_argument('--model_ema_force_cpu', action='store_true', default=False, help='')
 
     # Optimizer parameters
+    parser.add_argument('--loss', default='crossentropy',
+                        choices=['crossentropy', 'focal', 'smoothap', 'exponential1'],
+                        type=str, help='dataset')
     parser.add_argument('--opt', default='adamw', type=str, metavar='OPTIMIZER',
                         help='Optimizer (default: "adamw"')
     parser.add_argument('--opt_eps', default=1e-8, type=float, metavar='EPSILON',
@@ -241,7 +244,6 @@ def main(args, ds_init):
     else:
         dataset_val, _ = build_frame_dataset(is_train=False, test_mode=False, args=args)
     dataset_test, _ = build_frame_dataset(is_train=False, test_mode=True, args=args)
-    
 
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
@@ -305,15 +307,6 @@ def main(args, ds_init):
         )
     else:
         data_loader_test = None
-
-    mixup_fn = None
-    mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
-    if mixup_active:
-        print("Mixup is activated!")
-        mixup_fn = Mixup(
-            mixup_alpha=args.mixup, cutmix_alpha=args.cutmix, cutmix_minmax=args.cutmix_minmax,
-            prob=args.mixup_prob, switch_prob=args.mixup_switch_prob, mode=args.mixup_mode,
-            label_smoothing=args.smoothing, num_classes=args.nb_classes)
 
     model = create_model(
         args.model,
@@ -473,13 +466,27 @@ def main(args, ds_init):
         args.weight_decay, args.weight_decay_end, args.epochs, num_training_steps_per_epoch)
     print("Max WD = %.7f, Min WD = %.7f" % (max(wd_schedule_values), min(wd_schedule_values)))
 
-    if mixup_fn is not None:
-        # smoothing is handled with mixup label transform
-        criterion = SoftTargetCrossEntropy()
-    elif args.smoothing > 0.:
-        criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
-    else:
+    mixup_fn = None
+    # if mixup_fn is not None:
+    #     # smoothing is handled with mixup label transform
+    #     criterion = SoftTargetCrossEntropy()
+    # elif args.smoothing > 0.:
+    #     criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
+    # else:
+    #     criterion = torch.nn.CrossEntropyLoss()
+
+    with_ttc = False
+    if args.loss == "crossentropy":
         criterion = torch.nn.CrossEntropyLoss()
+    elif args.loss == "focal":
+        criterion = utils.FocalLoss(alpha=0.75, gamma=2)
+    elif args.loss == "smoothap":
+        criterion = utils.SmoothAPLoss()
+    elif args.loss == "exponential1":
+        criterion = utils.TemporalExponentialLoss(lambda_param=0.1)
+        with_ttc = True
+    else:
+        raise NotImplementedError(f"Loss not implemented: {args.loss}")
 
     print("criterion = %s" % str(criterion))
 
@@ -518,6 +525,7 @@ def main(args, ds_init):
             log_writer=log_writer, start_steps=epoch * num_training_steps_per_epoch,
             lr_schedule_values=lr_schedule_values, wd_schedule_values=wd_schedule_values,
             num_training_steps_per_epoch=num_training_steps_per_epoch, update_freq=args.update_freq,
+            with_ttc=with_ttc
         )
         if log_writer is not None:
             log_writer.update(train_acc=train_stats['metr_acc'], head="my_train", step=epoch)
@@ -532,7 +540,7 @@ def main(args, ds_init):
                     args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
                     loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
         if data_loader_val is not None:
-            test_stats = validation_one_epoch(data_loader_val, model, device)
+            test_stats = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
             print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats['acc']:.1f}%")
             if max_accuracy < test_stats["acc"]:
                 max_accuracy = test_stats["acc"]
@@ -573,7 +581,7 @@ def main(args, ds_init):
                 f.write(json.dumps(log_stats) + "\n")
 
     preds_file = os.path.join(args.output_dir, str(global_rank) + '.txt')
-    test_stats = final_test(data_loader_test, model, device, preds_file)
+    test_stats = final_test(data_loader_test, model, device, preds_file, with_ttc=with_ttc)
     torch.distributed.barrier()
     if global_rank == 0:
         print("Start merging results...")

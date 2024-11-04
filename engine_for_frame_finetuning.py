@@ -25,6 +25,12 @@ def train_class_batch(model, samples, target, criterion):
     return loss, outputs
 
 
+def train_class_batch_ttc(model, samples, target, ttc, criterion):
+    outputs = model(samples)
+    loss = criterion(outputs, target, ttc)
+    return loss, outputs
+
+
 def get_loss_scale_for_deepspeed(model):
     optimizer = model.optimizer
     return optimizer.loss_scale if hasattr(optimizer, "loss_scale") else optimizer.cur_scale
@@ -35,7 +41,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     device: torch.device, epoch: int, loss_scaler, max_norm: float = 0,
                     model_ema: Optional[ModelEma] = None, mixup_fn: Optional[Mixup] = None, log_writer=None,
                     start_steps=None, lr_schedule_values=None, wd_schedule_values=None,
-                    num_training_steps_per_epoch=None, update_freq=None):
+                    num_training_steps_per_epoch=None, update_freq=None, with_ttc=False):
     model.train(True)
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
@@ -52,7 +58,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     preds = []
     labels = []
 
-    for data_iter_step, (samples, targets, _, _) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for data_iter_step, (samples, targets, _, ttc) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         step = data_iter_step // update_freq
         if step >= num_training_steps_per_epoch:
             continue
@@ -67,23 +73,31 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
         # collect labels
         labels.append(targets.cpu().detach())
-
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
+        ttc = ttc.to(device, non_blocking=True)
 
         if mixup_fn is not None:
             samples, targets = mixup_fn(samples, targets)
 
         if loss_scaler is None:
             samples = samples.half()
-            loss, output = train_class_batch(
-                model, samples, targets, criterion)
+            if with_ttc:
+                loss, output = train_class_batch_ttc(
+                    model, samples, targets, ttc, criterion)
+            else:
+                loss, output = train_class_batch(
+                    model, samples, targets, criterion)
             # collect predictions
             preds.append(output.cpu().detach())
         else:
             with torch.cuda.amp.autocast():
-                loss, output = train_class_batch(
-                    model, samples, targets, criterion)
+                if with_ttc:
+                    loss, output = train_class_batch_ttc(
+                        model, samples, targets, ttc, criterion)
+                else:
+                    loss, output = train_class_batch(
+                        model, samples, targets, criterion)
             # collect predictions
             preds.append(output.cpu().detach())
 
@@ -172,7 +186,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 
 @torch.no_grad()
-def validation_one_epoch(data_loader, model, device):
+def validation_one_epoch(data_loader, model, device, with_ttc=False):
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -187,13 +201,18 @@ def validation_one_epoch(data_loader, model, device):
     for batch in metric_logger.log_every(data_loader, 10, header):
         videos = batch[0]
         target = batch[1]
+        ttc = batch[3] if with_ttc else None
         videos = videos.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
+        ttc = ttc.to(device, non_blocking=True)
 
         # compute output
         with torch.cuda.amp.autocast():
             output = model(videos)
-            loss = criterion(output, target)
+            if with_ttc:
+                loss = criterion(output, target, ttc)
+            else:
+                loss = criterion(output, target)
 
         # collect predictions
         preds.append(output.cpu().detach())
@@ -225,9 +244,8 @@ def validation_one_epoch(data_loader, model, device):
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
-
 @torch.no_grad()
-def final_test(data_loader, model, device, file, plot_dir=None):
+def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -244,13 +262,18 @@ def final_test(data_loader, model, device, file, plot_dir=None):
         videos = batch[0]
         target = batch[1]
         ids = batch[2]
+        ttc = batch[3]
         videos = videos.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
+        ttc = ttc.to(device, non_blocking=True)
 
         # compute output
         with torch.cuda.amp.autocast():
             output = model(videos)
-            loss = criterion(output, target)
+            if with_ttc:
+                loss = criterion(output, target, ttc)
+            else:
+                loss = criterion(output, target)
 
         for i in range(output.size(0)):
             string = f"{ids[i]} {output.data[i].cpu().numpy().tolist()} {int(target[i].cpu().numpy())}\n"
@@ -371,6 +394,7 @@ def merge(eval_path, num_tasks):
     final_top1 = np.mean(top1)
     return final_top1*100
 
+
 def compute_video(lst):
     i, video_id, data, label = lst
     feat = [x for x in data]
@@ -378,6 +402,7 @@ def compute_video(lst):
     pred = np.argmax(feat)
     top1 = (int(pred) == int(label)) * 1.0
     return [pred, top1, int(label)]
+
 
 def calculate_metrics(preds, labels):
     preds = torch.nn.functional.softmax(preds, dim=1)

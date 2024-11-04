@@ -11,6 +11,7 @@ from torch.utils.data._utils.collate import default_collate
 from pathlib import Path
 import subprocess
 import torch
+from torch import nn
 import torch.distributed as dist
 # from torch._six import inf
 import math
@@ -525,6 +526,7 @@ def multiple_samples_collate(batch, fold=False):
     inputs = [item for sublist in inputs for item in sublist]
     labels = [item for sublist in labels for item in sublist]
     video_idx = [item for sublist in video_idx for item in sublist]
+    extra_data = [item for sublist in extra_data for item in sublist]
     inputs, labels, video_idx, extra_data = (
         default_collate(inputs),
         default_collate(labels),
@@ -535,3 +537,74 @@ def multiple_samples_collate(batch, fold=False):
         return [inputs], labels, video_idx, extra_data
     else:
         return inputs, labels, video_idx, extra_data
+
+
+class FocalLoss(nn.Module):
+    def __init__(self, alpha=1, gamma=2, reduction='mean'):
+        super(FocalLoss, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        ce_loss = nn.CrossEntropyLoss(reduction='none')(inputs, targets)
+
+        print("No")
+        exit(1)
+
+        pt = torch.exp(-ce_loss)
+        focal_loss = self.alpha * ((1 - pt) ** self.gamma) * ce_loss
+
+        if self.reduction == 'mean':
+            return torch.mean(focal_loss)
+        elif self.reduction == 'sum':
+            return torch.sum(focal_loss)
+        else:
+            return focal_loss
+
+
+class SmoothAPLoss(nn.Module):
+    def __init__(self, delta=0.01):
+        super(SmoothAPLoss, self).__init__()
+        self.delta = delta
+
+    def forward(self, predictions, labels):
+        # Apply softmax and take the probability of the dangerous class (index 1)
+        pred_probs = torch.nn.functional.softmax(predictions, dim=1)[:, 1]
+
+        print("No")
+        exit(1)
+
+        # Get positive and negative predictions
+        positive_probs = pred_probs[labels == 1]
+        negative_probs = pred_probs[labels == 0]
+
+        # Sort scores for negative samples in ascending order
+        sorted_neg_probs, _ = torch.sort(negative_probs)
+
+        # Compute SmoothAP
+        loss = 0.0
+        for pos_prob in positive_probs:
+            rank_diff = torch.relu(sorted_neg_probs - pos_prob + self.delta)
+            loss += torch.sum(rank_diff)
+
+        loss /= positive_probs.shape[0] if positive_probs.shape[0] > 0 else 1.0
+
+        return loss
+
+
+class TemporalExponentialLoss(torch.nn.Module):
+    def __init__(self, lambda_param=0.1):
+        super(TemporalExponentialLoss, self).__init__()
+        self.lambda_param = lambda_param
+
+    def forward(self, predictions, labels, ttc):
+        # Standard cross-entropy loss
+        ce_loss = nn.functional.cross_entropy(predictions, labels)
+
+        print("No")
+        exit(1)
+
+        # Apply exponential penalty based on TTC
+        penalty = torch.exp(-self.lambda_param * ttc)
+        return torch.mean(ce_loss * penalty)
