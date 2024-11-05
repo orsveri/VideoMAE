@@ -27,6 +27,7 @@ The codebase is mainly built with following libraries:
 - [einops](https://github.com/arogozhnikov/einops)
 
 - `pip install tensorboardX decord einops opencv-python scipy pandas`
+- `pip install scikit-learn matplotlib seaborn torchmetrics`
 
 ### Note:
 - We recommend you to use **`PyTorch >= 1.8.0`**.

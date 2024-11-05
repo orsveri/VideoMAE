@@ -1,5 +1,5 @@
 import os
-
+import zipfile
 import cv2
 import numpy as np
 import torch
@@ -263,24 +263,27 @@ class FrameClsDataset(Dataset):
         clip_id, frame_seq = dataset_sample
         clip_name = self.clip_names[clip_id]
         timesteps = [self.clip_timesteps[clip_id][idx] for idx in frame_seq]
-        filenames = [os.path.join(self.data_path, "frames", clip_name, "images", f"{str(ts).zfill(6)}.jpg") for ts in timesteps]
+        filenames = [f"{str(ts).zfill(6)}.jpg" for ts in timesteps]
         view = []
-        for fname in filenames:
-            img = cv2.imread(fname)
-            if img is None:
-                print(fname)
-                exit(1)
-            if final_resize:
-                img = cv2.resize(img, dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
-            elif resize_scale is not None:
-                short_side = min(img.shape[:2])
-                target_side = self.crop_size * resize_scale
-                k = target_side / short_side
-                img = cv2.resize(img, dsize=(0,0), fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
-            else:
-                raise ValueError
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.uint8)
-            view.append(img)
+        with zipfile.ZipFile(os.path.join(self.data_path, "frames", clip_name, "images.zip"), 'r') as zipf:
+            for fname in filenames:
+                with zipf.open(fname) as file:
+                    file_bytes = np.frombuffer(file.read(), np.uint8)
+                    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                if img is None:
+                    print("Image doesn't exist! ", fname)
+                    exit(1)
+                if final_resize:
+                    img = cv2.resize(img, dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
+                elif resize_scale is not None:
+                    short_side = min(img.shape[:2])
+                    target_side = self.crop_size * resize_scale
+                    k = target_side / short_side
+                    img = cv2.resize(img, dsize=(0,0), fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
+                else:
+                    raise ValueError
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.uint8)
+                view.append(img)
         #view = np.stack(view, axis=0)
         return view
 
