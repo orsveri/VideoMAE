@@ -75,7 +75,8 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         labels.append(targets.cpu().detach())
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
-        ttc = ttc.to(device, non_blocking=True)
+        if with_ttc:
+            ttc = ttc.to(device, non_blocking=True)
 
         if mixup_fn is not None:
             samples, targets = mixup_fn(samples, targets)
@@ -204,7 +205,8 @@ def validation_one_epoch(data_loader, model, device, with_ttc=False):
         ttc = batch[3] if with_ttc else None
         videos = videos.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
-        ttc = ttc.to(device, non_blocking=True)
+        if with_ttc:
+            ttc = ttc.to(device, non_blocking=True)
 
         # compute output
         with torch.cuda.amp.autocast():
@@ -265,7 +267,8 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
         ttc = batch[3]
         videos = videos.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
-        ttc = ttc.to(device, non_blocking=True)
+        if with_ttc:
+            ttc = ttc.to(device, non_blocking=True)
 
         # compute output
         with torch.cuda.amp.autocast():

@@ -548,10 +548,6 @@ class FocalLoss(nn.Module):
 
     def forward(self, inputs, targets):
         ce_loss = nn.CrossEntropyLoss(reduction='none')(inputs, targets)
-
-        print("No")
-        exit(1)
-
         pt = torch.exp(-ce_loss)
         focal_loss = self.alpha * ((1 - pt) ** self.gamma) * ce_loss
 
@@ -571,10 +567,6 @@ class SmoothAPLoss(nn.Module):
     def forward(self, predictions, labels):
         # Apply softmax and take the probability of the dangerous class (index 1)
         pred_probs = torch.nn.functional.softmax(predictions, dim=1)[:, 1]
-
-        print("No")
-        exit(1)
-
         # Get positive and negative predictions
         positive_probs = pred_probs[labels == 1]
         negative_probs = pred_probs[labels == 0]
@@ -601,10 +593,23 @@ class TemporalExponentialLoss(torch.nn.Module):
     def forward(self, predictions, labels, ttc):
         # Standard cross-entropy loss
         ce_loss = nn.functional.cross_entropy(predictions, labels)
-
-        print("No")
-        exit(1)
-
         # Apply exponential penalty based on TTC
         penalty = torch.exp(-self.lambda_param * ttc)
         return torch.mean(ce_loss * penalty)
+
+
+def temporal_exponential_loss(y_pred, y_true, time_to_anomaly, alpha_pre=0.1, alpha_post=0.5):
+    # Assuming time_to_anomaly is negative before the start and positive after the end of anomaly window.
+
+    # Calculate base cross-entropy loss
+    base_loss = F.cross_entropy(y_pred, y_true, reduction='none')
+
+    # Calculate exponential weights TODO: saturating functions
+    weight = torch.ones_like(y_true, dtype=torch.float)
+    weight[time_to_anomaly < 0] = torch.exp(alpha_pre * time_to_anomaly[time_to_anomaly < 0])
+    weight[time_to_anomaly > 0] = torch.exp(-alpha_post * time_to_anomaly[time_to_anomaly > 0])
+
+    # Apply weights to the base loss
+    weighted_loss = base_loss * weight
+
+    return weighted_loss.mean()
