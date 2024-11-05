@@ -54,19 +54,17 @@ class FrameClsDataset(Dataset):
         self._prepare_views()
         assert len(self.dataset_samples) > 0
         assert len(self.label_array) > 0
-        # TODO: show counts
+
         count_safe = self.label_array.count(0)
         count_risk = self.label_array.count(1)
-        print(f"\n\n===\nCOUNT safe: {count_safe}\nCOUNT risk: {count_risk}\n===")
+        print(f"\n\n===\n[{mode}] | COUNT safe: {count_safe}\nCOUNT risk: {count_risk}\n===")
 
         if (mode == 'train'):
             pass
 
         elif (mode == 'validation'):
             self.data_transform = video_transforms.Compose([
-                # TODO: pad first, then resize to the target size
-                #video_transforms.Resize((self.crop_size, self.crop_size), interpolation='bilinear'),
-                volume_transforms.ClipToTensor(),  # TODO: ??
+                volume_transforms.ClipToTensor(),
                 video_transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                            std=[0.229, 0.224, 0.225])
             ])
@@ -75,7 +73,7 @@ class FrameClsDataset(Dataset):
                 video_transforms.Resize(size=(self.crop_size, self.crop_size), interpolation='bilinear')
             ])
             self.data_transform = video_transforms.Compose([
-                volume_transforms.ClipToTensor(),  # TODO: ??
+                volume_transforms.ClipToTensor(),
                 video_transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                            std=[0.229, 0.224, 0.225])
             ])
@@ -269,6 +267,9 @@ class FrameClsDataset(Dataset):
         view = []
         for fname in filenames:
             img = cv2.imread(fname)
+            if img is None:
+                print(fname)
+                exit(1)
             if final_resize:
                 img = cv2.resize(img, dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
             elif resize_scale is not None:
