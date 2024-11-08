@@ -55,7 +55,7 @@ def get_args():
 
     # Optimizer parameters
     parser.add_argument('--loss', default='crossentropy',
-                        choices=['crossentropy', 'focal', 'smoothap', 'exponential1'],
+                        choices=['crossentropy', 'focal', 'focal6x100', 'focal2_6', 'focal2_2', 'smoothap', 'exponential1'],
                         type=str, help='dataset')
     parser.add_argument('--opt', default='adamw', type=str, metavar='OPTIMIZER',
                         help='Optimizer (default: "adamw"')
@@ -151,8 +151,8 @@ def get_args():
     parser.add_argument('--num_segments', type=int, default= 1)
     parser.add_argument('--num_frames', type=int, default= 16)
     parser.add_argument('--sampling_rate', type=int, default= 4)
-    parser.add_argument('--view_fps', type=int, default=10)  # DoTA only!
-    parser.add_argument('--data_set', default='Kinetics-400', choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51','DoTA','image_folder'],
+    parser.add_argument('--view_fps', type=int, default=10)  # DoTA, DADA1k only!
+    parser.add_argument('--data_set', default='Kinetics-400', choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51','DoTA', 'DADA1k','image_folder'],
                         type=str, help='dataset')
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
@@ -231,14 +231,8 @@ def main(args, ds_init):
 
     cudnn.benchmark = True
 
-    # dataset_train, args.nb_classes = build_dataset(is_train=True, test_mode=False, args=args)
-    # if args.disable_eval_during_finetuning:
-    #     dataset_val = None
-    # else:
-    #     dataset_val, _ = build_dataset(is_train=False, test_mode=False, args=args)
-    # dataset_test, _ = build_dataset(is_train=False, test_mode=True, args=args)
-
-    dataset_train, args.nb_classes = build_frame_dataset(is_train=True, test_mode=False, args=args)
+    if not args.eval:
+        dataset_train, args.nb_classes = build_frame_dataset(is_train=True, test_mode=False, args=args)
     if args.disable_eval_during_finetuning:
         dataset_val = None
     else:
@@ -274,15 +268,16 @@ def main(args, ds_init):
     else:
         collate_func = None
 
-    data_loader_train = torch.utils.data.DataLoader(
-        dataset_train, sampler=sampler_train,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        drop_last=True,
-        prefetch_factor=4,  # orsveri
-        collate_fn=collate_func,
-    )
+    if dataset_train is not None:
+        data_loader_train = torch.utils.data.DataLoader(
+            dataset_train, sampler=sampler_train,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_mem,
+            drop_last=True,
+            prefetch_factor=4,  # orsveri
+            collate_fn=collate_func,
+        )
 
     if dataset_val is not None:
         data_loader_val = torch.utils.data.DataLoader(
@@ -480,6 +475,12 @@ def main(args, ds_init):
         criterion = torch.nn.CrossEntropyLoss()
     elif args.loss == "focal":
         criterion = utils.FocalLoss(alpha=0.75, gamma=2)
+    elif args.loss == "focal6x100":
+        criterion = utils.FocalLoss(alpha=0.75, gamma=6, multiplier=100)
+    elif args.loss == "focal2_6":
+        criterion = utils.FocalLoss2(gamma=6, multiplier=50)
+    elif args.loss == "focal2_2":
+        criterion = utils.FocalLoss2(gamma=2, multiplier=10)
     elif args.loss == "smoothap":
         criterion = utils.SmoothAPLoss()
     elif args.loss == "exponential1":
@@ -495,18 +496,19 @@ def main(args, ds_init):
         optimizer=optimizer, loss_scaler=loss_scaler, model_ema=model_ema)
 
     if args.eval:
-        preds_file = os.path.join(args.output_dir, str(global_rank) + '.txt')
+        preds_file = os.path.join(args.output_dir, f'predictions_{global_rank}.csv')
+        assert not os.path.exists(preds_file), "File already exists!"
         test_stats = final_test(data_loader_test, model, device, preds_file,
                                 plot_dir=os.path.join(args.output_dir, "plots"))
         torch.distributed.barrier()
-        if global_rank == 0:
-            print("Start merging results...")
-            final_top1 = merge(args.output_dir, num_tasks)
-            print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%")
-            log_stats = {'Final top-1': final_top1}
-            if args.output_dir and utils.is_main_process():
-                with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_stats) + "\n")
+        #if global_rank == 0:
+            #print("Start merging results...")
+            # final_top1 = merge(args.output_dir, num_tasks)
+            # print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%")
+            # log_stats = {'Final top-1': final_top1}
+            # if args.output_dir and utils.is_main_process():
+            #     with open(os.path.join(args.output_dir, "results.txt"), mode="a", encoding="utf-8") as f:
+            #         f.write(json.dumps(log_stats) + "\n")
         exit(0)
         
 

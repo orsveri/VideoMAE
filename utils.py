@@ -3,6 +3,7 @@ import os
 import math
 import time
 import json
+import psutil
 from collections import defaultdict, deque
 import datetime
 import numpy as np
@@ -539,17 +540,58 @@ def multiple_samples_collate(batch, fold=False):
         return inputs, labels, video_idx, extra_data
 
 
+def print_memory_usage():
+    # GPU memory usage
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            allocated = torch.cuda.memory_allocated(i) / (1024 ** 3)
+            reserved = torch.cuda.memory_reserved(i) / (1024 ** 3)
+            print(f"------------GPU {i}: Allocated: {allocated:.2f} GB, Reserved: {reserved:.2f} GB")
+
+    # CPU memory usage
+    vm = psutil.virtual_memory()
+    used = (vm.total - vm.available) / (1024 ** 3)
+    print(f"------------CPU Memory Usage: {used:.2f} GB / {vm.total / (1024 ** 3):.2f} GB")
+
+
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=1, gamma=2, reduction='mean'):
+    def __init__(self, alpha=1, gamma=2, reduction='mean', multiplier=1.):
         super(FocalLoss, self).__init__()
         self.alpha = alpha
         self.gamma = gamma
         self.reduction = reduction
+        self.multiplier = multiplier
+
+    def forward(self, inputs, targets):
+        ce_loss = nn.CrossEntropyLoss(reduction='none')(inputs, targets)
+        pt = torch.exp(-ce_loss) # Probability for the true class
+        focal_loss = self.multiplier * self.alpha * ((1 - pt) ** self.gamma) * ce_loss
+
+        if self.reduction == 'mean':
+            return torch.mean(focal_loss)
+        elif self.reduction == 'sum':
+            return torch.sum(focal_loss)
+        else:
+            return focal_loss
+
+
+class FocalLoss2(nn.Module):
+    def __init__(self, alpha=[0.40, 0.60], gamma=2, reduction='mean', multiplier=1.):
+        super(FocalLoss2, self).__init__()
+        self.alpha = alpha  # a list/array with a weight for each class
+        self.gamma = gamma
+        self.reduction = reduction
+        self.multiplier = multiplier
 
     def forward(self, inputs, targets):
         ce_loss = nn.CrossEntropyLoss(reduction='none')(inputs, targets)
         pt = torch.exp(-ce_loss)
-        focal_loss = self.alpha * ((1 - pt) ** self.gamma) * ce_loss
+
+        if self.alpha is not None:
+            at = torch.tensor(self.alpha, dtype=inputs.dtype, device=inputs.device)[targets]
+            ce_loss = at * ce_loss
+
+        focal_loss = ((1 - pt) ** self.gamma) * ce_loss * self.multiplier
 
         if self.reduction == 'mean':
             return torch.mean(focal_loss)
@@ -585,31 +627,50 @@ class SmoothAPLoss(nn.Module):
         return loss
 
 
-class TemporalExponentialLoss(torch.nn.Module):
-    def __init__(self, lambda_param=0.1):
+class TemporalExponentialLoss(nn.Module):
+    def __init__(self, alpha_pre=0.1, alpha_post=0.5, max_time_pre=1.0, max_time_post=0.5):
         super(TemporalExponentialLoss, self).__init__()
-        self.lambda_param = lambda_param
+        self.alpha_pre = alpha_pre
+        self.alpha_post = alpha_post
+        self.max_time_pre = max_time_pre
+        self.max_time_post = max_time_post
 
-    def forward(self, predictions, labels, ttc):
-        # Standard cross-entropy loss
-        ce_loss = nn.functional.cross_entropy(predictions, labels)
-        # Apply exponential penalty based on TTC
-        penalty = torch.exp(-self.lambda_param * ttc)
-        return torch.mean(ce_loss * penalty)
+    def forward(self, y_pred, y_true, time_to_anomaly):
+        # Base cross-entropy loss
+        base_loss = nn.functional.cross_entropy(y_pred, y_true, reduction='none')
+
+        # Calculate exponential weights
+        weight = torch.ones_like(y_true, dtype=torch.float)
+        weight[time_to_anomaly < 0] = torch.exp(self.alpha_pre * time_to_anomaly[time_to_anomaly < 0])
+        weight[time_to_anomaly > 0] = torch.exp(-self.alpha_post * time_to_anomaly[time_to_anomaly > 0])
+
+        # Saturate weights outside transition window (set max weight to 1.0)
+        weight = torch.clamp(weight, max=1.0)
+
+        # Apply weights to the base loss
+        weighted_loss = base_loss * weight
+
+        return weighted_loss.mean()
 
 
-def temporal_exponential_loss(y_pred, y_true, time_to_anomaly, alpha_pre=0.1, alpha_post=0.5):
-    # Assuming time_to_anomaly is negative before the start and positive after the end of anomaly window.
+def brier_score_loss(predictions, targets):
+    """
+    Computes the Brier score for binary classification with logits output.
 
-    # Calculate base cross-entropy loss
-    base_loss = F.cross_entropy(y_pred, y_true, reduction='none')
+    Arguments:
+    predictions -- torch.Tensor of shape (batch_size, 2), containing logits for two classes.
+    targets -- torch.Tensor of shape (batch_size,), containing ground truth labels (0 or 1).
 
-    # Calculate exponential weights TODO: saturating functions
-    weight = torch.ones_like(y_true, dtype=torch.float)
-    weight[time_to_anomaly < 0] = torch.exp(alpha_pre * time_to_anomaly[time_to_anomaly < 0])
-    weight[time_to_anomaly > 0] = torch.exp(-alpha_post * time_to_anomaly[time_to_anomaly > 0])
+    Returns:
+    torch.Tensor: Brier score loss.
+    """
+    # Apply softmax to convert logits to probabilities for class "unsafe"
+    probs = F.softmax(predictions, dim=1)[:, 1]
 
-    # Apply weights to the base loss
-    weighted_loss = base_loss * weight
+    # Create target probabilities (0 or 1)
+    target_probs = targets.float()
 
-    return weighted_loss.mean()
+    # Calculate the Brier score (mean squared error between predicted probs and true labels)
+    brier_loss = torch.mean((probs - target_probs) ** 2)
+
+    return brier_loss

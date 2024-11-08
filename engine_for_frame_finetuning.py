@@ -2,6 +2,7 @@ import os
 
 import cv2
 import numpy as np
+import pandas as pd
 import math
 import sys
 from typing import Iterable, Optional
@@ -72,7 +73,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     param_group["weight_decay"] = wd_schedule_values[it]
 
         # collect labels
-        labels.append(targets.cpu().detach())
+        labels.append(targets.detach().cpu())   # !!
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
         if with_ttc:
@@ -90,7 +91,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                 loss, output = train_class_batch(
                     model, samples, targets, criterion)
             # collect predictions
-            preds.append(output.cpu().detach())
+            preds.append(output.detach().cpu())   # !!
         else:
             with torch.cuda.amp.autocast():
                 if with_ttc:
@@ -100,7 +101,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     loss, output = train_class_batch(
                         model, samples, targets, criterion)
             # collect predictions
-            preds.append(output.cpu().detach())
+            preds.append(output.detach().cpu())    # !!
 
         loss_value = loss.item()
 
@@ -134,6 +135,10 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             loss_scale_value = loss_scaler.state_dict()["scale"]
 
         torch.cuda.synchronize()
+
+        if data_iter_step % print_freq == 0:
+            # Print memory usage after each iteration
+            utils.print_memory_usage()
 
         if mixup_fn is None:
             class_acc = (output.max(-1)[-1] == targets).float().mean()
@@ -257,14 +262,27 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
     model.eval()
     final_result = []
 
+    clips = []
+    frame_names = []
     preds = []
     labels = []
+    ttcs = []
     
     for batch in metric_logger.log_every(data_loader, 10, header):
         videos = batch[0]
         target = batch[1]
         ids = batch[2]
-        ttc = batch[3]
+        extra_info = batch[3]
+
+        ttc = extra_info["ttc"]
+        clips_batch = extra_info["clip"]
+        frame_batch = extra_info["frame"]
+
+        clips.extend(clips_batch)
+        frame_names.extend(frame_batch)
+        labels.append(target.detach())
+        ttcs.append(ttc.clone().detach())
+
         videos = videos.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
         if with_ttc:
@@ -284,7 +302,6 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
 
         # collect predictions
         preds.append(output.cpu().detach())
-        labels.append(target.cpu().detach())
 
         acc1 = accuracy(output, target, topk=(1,))[0]
 
@@ -295,6 +312,7 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
     # calculate metrics
     preds = torch.cat(preds, dim=0)
     labels = torch.cat(labels, dim=0)
+    logits = torch.clone(preds).detach()
     preds = torch.nn.functional.softmax(preds, dim=1)
     values = preds[:, 1]
     _, preds = torch.max(preds, 1)
@@ -349,12 +367,24 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
         cv2.imwrite(os.path.join(plot_dir, "pr.jpg"), fig2)
         cv2.imwrite(os.path.join(plot_dir, "roc.jpg"), fig3)
 
-    if not os.path.exists(file):
-        os.mknod(file)
-    with open(file, 'w') as f:
-        f.write("{}\n".format(acc1))
-        for line in final_result:
-            f.write(line)
+    # if not os.path.exists(file):
+    #     os.mknod(file)
+    # with open(file, 'w') as f:
+    #     f.write("{}\n".format(acc1))
+    #     for line in final_result:
+    #         f.write(line)
+    ttcs = torch.cat(ttcs, dim=0).numpy()
+    labels = labels.numpy().astype(int)
+    logits = logits.numpy()
+    df = pd.DataFrame({
+        "clip": clips,
+        "filename": frame_names,
+        "logits_safe": logits[:, 0],
+        "logits_risk": logits[:, 1],
+        "label": labels,
+        "ttc": ttcs
+    })
+    df.to_csv(file, index=True, header=True)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print('* Acc@1 {top1.global_avg:.3f} loss {losses.global_avg:.3f}'
@@ -368,8 +398,9 @@ def merge(eval_path, num_tasks):
     dict_label = {}
     print("Reading individual output files")
 
+    # TODO: combine two csv here
     for x in range(num_tasks):
-        file = os.path.join(eval_path, str(x) + '.txt')
+        file = os.path.join(eval_path, f'predictions_{x}.csv')
         lines = open(file, 'r').readlines()[1:]
         for line in lines:
             line = line.strip()

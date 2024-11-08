@@ -4,6 +4,7 @@ from transforms import *
 from masking_generator import TubeMaskingGenerator
 from kinetics import VideoClsDataset, VideoMAE
 from dota import FrameClsDataset
+from dada import FrameClsDataset_DADA
 from ssv2 import SSVideoClsDataset
 
 
@@ -77,6 +78,39 @@ def build_frame_dataset(is_train, test_mode, args):
             view_len=args.num_frames,
             view_step=args.sampling_rate,
             orig_fps=orig_fps,  # for DoTA
+            target_fps=args.view_fps,  # 10
+            num_segment=1,
+            test_num_segment=args.test_num_segment,
+            test_num_crop=1,  # 1
+            num_crop=1,
+            keep_aspect_ratio=True,
+            crop_size=args.input_size,
+            short_side_size=args.short_side_size,
+            args=args)
+        nb_classes = 2
+
+    elif args.data_set == 'DADA1k':
+        mode = None
+        anno_path = None
+        orig_fps = 30
+        if is_train is True:
+            mode = 'train'
+            anno_path = 'train_split.txt'
+            raise NotImplementedError()
+        elif test_mode is True:
+            mode = 'test'
+            anno_path = 'val_split.txt'
+        else:
+            mode = 'validation'
+            anno_path = 'val_split.txt'
+
+        dataset = FrameClsDataset_DADA(
+            anno_path=anno_path,
+            data_path=args.data_path,
+            mode=mode,
+            view_len=args.num_frames,
+            view_step=args.sampling_rate,
+            orig_fps=orig_fps,  # original FPS of the dataset
             target_fps=args.view_fps,  # 10
             num_segment=1,
             test_num_segment=args.test_num_segment,

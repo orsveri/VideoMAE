@@ -7,6 +7,7 @@ import pandas as pd
 import json
 from PIL import Image
 from torchvision import transforms
+from natsort import natsorted
 
 from functional import crop_clip
 from random_erasing import RandomErasing
@@ -18,8 +19,10 @@ import volume_transforms as volume_transforms
 from dataset.sequencing import RegularSequencer, UnsafeOverlapSequencer
 
 
-class FrameClsDataset(Dataset):
+
+class FrameClsDataset_DADA(Dataset):
     """Load your own video classification dataset."""
+    ego_categories = [str(cat) for cat in list(range(1, 19)) + [61, 62]]
 
     def __init__(self, anno_path, data_path, mode='train',
                  view_len=8, target_fps=10, orig_fps=10, view_step=10,
@@ -34,9 +37,6 @@ class FrameClsDataset(Dataset):
         self.orig_fps = orig_fps
         self.view_step = view_step
         self.crop_size = crop_size
-        self.short_side_size = short_side_size
-        #self.new_height = new_height
-        #self.new_width = new_width
         self.keep_aspect_ratio = keep_aspect_ratio
         self.num_segment = num_segment
         self.test_num_segment = test_num_segment
@@ -87,32 +87,56 @@ class FrameClsDataset(Dataset):
         clip_binary_labels = []
         clip_cat_labels = []
         clip_ego = []
-        clip_night = []
+        clip_toa = []
 
-        with open(os.path.join(self.data_path, "dataset", self.anno_path), 'r') as file:
+        errors = []
+
+        with open(os.path.join(self.data_path, self.anno_path), 'r') as file:
             clip_names = [line.rstrip() for line in file]
+
+        #df = pd.read_csv(os.path.join(os.path.dirname(self.data_path), "full_anno.csv"))
+        df = pd.read_csv(os.path.join(os.path.dirname(self.data_path), "full_anno.csv"))
+
         for clip in clip_names:
-            clip_anno_path = os.path.join(self.data_path, "dataset", "annotations", f"{clip}.json")
-            with open(clip_anno_path) as f:
-                anno = json.load(f)
-                timesteps = [int(os.path.splitext(os.path.basename(frame_label["image_path"]))[0]) for frame_label
-                                  in anno["labels"]]
-                cat_labels = [int(frame_label["accident_id"]) for frame_label in anno["labels"]]
-                binary_labels = [1 if l > 0 else 0  for l in cat_labels]
-                if_ego = anno["ego_involve"]
-                if_night = anno["night"]
-                clip_timesteps.append(timesteps)
-                clip_binary_labels.append(binary_labels)
-                clip_cat_labels.append(cat_labels)
-                clip_ego.append(if_ego)
-                clip_night.append(if_night)
+            clip_type, clip_subfolder = clip.split("/")
+            # row = df[(df["video"] == int(clip_subfolder)) & (df["type"] == int(clip_type))]
+            # info = f"clip: {clip}, type: {clip_type}, subfolder: {clip_subfolder}, rows found: {row}"
+            # #assert len(row) == 1, f"Multiple results! \n{info}"
+            # if len(row) != 1:
+            #     errors.append(info)
+            #     continue
+
+            framenames = natsorted([f for f in os.listdir(os.path.join(self.data_path, "rgb_videos", clip)) if os.path.splitext(f)[1]==".jpg"])
+            timesteps = [int(os.path.splitext(f)[0].split("_")[-1]) for f in framenames]
+            if_acc_video = int(row["whether an accident occurred (1/0)"])
+            if if_acc_video:
+                st = int(row["abnormal start frame"])
+                en = int(row["abnormal end frame"])
+                binary_labels = [1 if st <= t <= en else 0 for t in timesteps]
+            else:
+                binary_labels = [0 for t in timesteps]
+            cat_labels = [l*clip_type for l in binary_labels]
+            if_ego = clip_type in self.ego_categories
+            toa = row["accident frame"]
+
+            clip_timesteps.append(timesteps)
+            clip_binary_labels.append(binary_labels)
+            clip_cat_labels.append(cat_labels)
+            clip_ego.append(if_ego)
+            clip_toa.append(toa)
+
+        for line in errors:
+            print(line)
+        print(f"\n====\nerrors: {len(errors)}")
+        exit(0)
+
         assert len(clip_names) == len(clip_timesteps) == len(clip_binary_labels) == len(clip_cat_labels)
         self.clip_names = clip_names
         self.clip_timesteps = clip_timesteps
         self.clip_bin_labels = clip_binary_labels
         self.clip_cat_labels = clip_cat_labels
         self.clip_ego = clip_ego
-        self.clip_night = clip_night
+        self.clip_toa = clip_toa
 
     def _prepare_views(self):
         dataset_sequences = []
@@ -261,6 +285,32 @@ class FrameClsDataset(Dataset):
         return buffer
 
     def load_images(self, dataset_sample, final_resize=False, resize_scale=None):
+        clip_id, frame_seq = dataset_sample
+        clip_name = self.clip_names[clip_id]
+        subclip = clip_name.split("/")[1]
+        timesteps = [self.clip_timesteps[clip_id][idx] for idx in frame_seq]
+        filenames = [f"{subclip}_frame_{ts}.jpg" for ts in timesteps]
+        view = []
+        for fname in filenames:
+            img = cv2.imread(os.path.join(self.data_path, "rgb_videos", clip_name, fname))
+            if img is None:
+                print("Image doesn't exist! ", fname)
+                exit(1)
+            if final_resize:
+                img = cv2.resize(img, dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
+            elif resize_scale is not None:
+                short_side = min(img.shape[:2])
+                target_side = self.crop_size * resize_scale
+                k = target_side / short_side
+                img = cv2.resize(img, dsize=(0,0), fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
+            else:
+                raise ValueError
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.uint8)
+            view.append(img)
+        #view = np.stack(view, axis=0)
+        return view, clip_name, filenames[-1]
+
+    def load_images_zip(self, dataset_sample, final_resize=False, resize_scale=None):
         clip_id, frame_seq = dataset_sample
         clip_name = self.clip_names[clip_id]
         timesteps = [self.clip_timesteps[clip_id][idx] for idx in frame_seq]
