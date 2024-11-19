@@ -1,5 +1,5 @@
 import os
-
+import gc
 import cv2
 import numpy as np
 import pandas as pd
@@ -60,6 +60,9 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     labels = []
 
     for data_iter_step, (samples, targets, _, ttc) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        gc.collect()  # Run garbage collection to clear unused memory
+        torch.cuda.empty_cache()  # Free up CUDA memory
+
         step = data_iter_step // update_freq
         if step >= num_training_steps_per_epoch:
             continue
@@ -73,11 +76,14 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     param_group["weight_decay"] = wd_schedule_values[it]
 
         # collect labels
-        labels.append(targets.detach().cpu())   # !!
+        labels.append(targets.detach().cpu())  # !!
+        print("u13bk LABELS: ", labels)
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
         if with_ttc:
             ttc = ttc.to(device, non_blocking=True)
+
+        print(f"Iter: {data_iter_step}, Rank {utils.get_rank()}, GPU {torch.cuda.current_device()}: Data size {samples.shape}")
 
         if mixup_fn is not None:
             samples, targets = mixup_fn(samples, targets)
@@ -134,16 +140,21 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     model_ema.update(model)
             loss_scale_value = loss_scaler.state_dict()["scale"]
 
+        del loss
+        del samples
         torch.cuda.synchronize()
 
         if data_iter_step % print_freq == 0:
             # Print memory usage after each iteration
+            print(f"AFTER Batch: {data_iter_step}, total batch size {output.shape[0]}")
             utils.print_memory_usage()
 
         if mixup_fn is None:
             class_acc = (output.max(-1)[-1] == targets).float().mean()
         else:
             class_acc = None
+        del output
+        del targets
         metric_logger.update(loss=loss_value)
         metric_logger.update(class_acc=class_acc)
         metric_logger.update(loss_scale=loss_scale_value)

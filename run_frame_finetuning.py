@@ -198,6 +198,7 @@ def get_args():
     # fix
     parser.local_rank = int(os.getenv("LOCAL_RANK", 0))
 
+
     if known_args.enable_deepspeed:
         try:
             import deepspeed
@@ -214,7 +215,14 @@ def get_args():
 
 
 def main(args, ds_init):
-    utils.init_distributed_mode(args)
+    try:
+        utils.init_distributed_mode(args)
+        print("Distributed process initialized successfully.")
+        print(f"\tRank {utils.get_rank()}, World Size: {utils.get_world_size()}, Device: {torch.cuda.current_device()}")
+    except Exception as e:
+        print(f"Initialization failed for rank {utils.get_rank()}: {e}")
+        exit(1)
+
 
     if ds_init is not None:
         utils.create_ds_config(args)
@@ -286,7 +294,7 @@ def main(args, ds_init):
             num_workers=args.num_workers,
             pin_memory=args.pin_mem,
             drop_last=False,
-            prefetch_factor=4  # orsveri
+            #prefetch_factor=4  # orsveri
         )
     else:
         data_loader_val = None
@@ -298,7 +306,7 @@ def main(args, ds_init):
             num_workers=args.num_workers,
             pin_memory=args.pin_mem,
             drop_last=False,
-            prefetch_factor=4  # orsveri
+            #prefetch_factor=4  # orsveri
         )
     else:
         data_loader_test = None
@@ -521,6 +529,7 @@ def main(args, ds_init):
             data_loader_train.sampler.set_epoch(epoch)
         if log_writer is not None:
             log_writer.set_step(epoch * num_training_steps_per_epoch * args.update_freq)
+        print("\ttraining another epoch...")
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer,
             device, epoch, loss_scaler, args.clip_grad, model_ema, mixup_fn,

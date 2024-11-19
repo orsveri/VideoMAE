@@ -260,9 +260,12 @@ def init_distributed_mode(args):
         os.environ['RANK'] = str(args.rank)
         os.environ['WORLD_SIZE'] = str(args.world_size)
     elif 'SLURM_PROCID' in os.environ:
-        args.rank = int(os.environ['SLURM_PROCID'])
-        args.gpu = int(os.environ['SLURM_LOCALID'])
-        args.world_size = int(os.environ['SLURM_NTASKS'])
+        # args.rank = int(os.environ['SLURM_PROCID'])
+        # args.gpu = int(os.environ['SLURM_LOCALID'])
+        # args.world_size = int(os.environ['SLURM_NTASKS'])
+        args.rank = int(os.environ['RANK'])
+        args.gpu = int(os.environ['LOCAL_RANK'])
+        args.world_size = int(os.environ['WORLD_SIZE'])
         os.environ['RANK'] = str(args.rank)
         os.environ['LOCAL_RANK'] = str(args.gpu)
         os.environ['WORLD_SIZE'] = str(args.world_size)
@@ -285,13 +288,14 @@ def init_distributed_mode(args):
 
     torch.cuda.set_device(args.gpu)
     args.dist_backend = 'nccl'
-    print('| distributed init (rank {}): {}, gpu {}'.format(
-        args.rank, args.dist_url, args.gpu), flush=True)
+    print('| distributed init (rank {}): {}, gpu {} | args.distributed={}'.format(
+        args.rank, args.dist_url, args.gpu, args.distributed), flush=True)
     torch.distributed.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
                                          world_size=args.world_size, rank=args.rank)
     torch.distributed.barrier()
     # assert torch.distributed.is_initialized()
-    setup_for_distributed(args.rank == 0)
+    #setup_for_distributed(args.rank == 0)
+    setup_for_distributed(True)
 
 
 def load_state_dict(model, state_dict, prefix='', ignore_missing="relative_position_index"):
@@ -538,6 +542,20 @@ def multiple_samples_collate(batch, fold=False):
         return [inputs], labels, video_idx, extra_data
     else:
         return inputs, labels, video_idx, extra_data
+    
+
+def print_memory_usage():
+    # GPU memory usage
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            allocated = torch.cuda.memory_allocated(i) / (1024 ** 3)
+            reserved = torch.cuda.memory_reserved(i) / (1024 ** 3)
+            print(f"------------GPU {i}: Allocated: {allocated:.2f} GB, Reserved: {reserved:.2f} GB")
+
+    # CPU memory usage
+    vm = psutil.virtual_memory()
+    used = (vm.total - vm.available) / (1024 ** 3)
+    print(f"------------CPU Memory Usage: {used:.2f} GB / {vm.total / (1024 ** 3):.2f} GB")
 
 
 def print_memory_usage():
