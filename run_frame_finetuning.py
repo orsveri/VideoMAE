@@ -150,7 +150,7 @@ def get_args():
     parser.add_argument('--imagenet_default_mean_and_std', default=True, action='store_true')
     parser.add_argument('--num_segments', type=int, default= 1)
     parser.add_argument('--num_frames', type=int, default= 16)
-    parser.add_argument('--sampling_rate', type=int, default= 4)
+    parser.add_argument('--sampling_rate', type=int, default=4)
     parser.add_argument('--view_fps', type=int, default=10)  # DoTA, DADA1k only!
     parser.add_argument('--data_set', default='Kinetics-400', choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51','DoTA', 'DADA1k','image_folder'],
                         type=str, help='dataset')
@@ -563,20 +563,6 @@ def main(args, ds_init):
         #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
         #             loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
         if data_loader_val is not None:
-            test_stats = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
-            print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats['acc']:.1f}%")
-            if max_accuracy < test_stats["acc"]:
-                max_accuracy = test_stats["acc"]
-                if args.output_dir and args.save_ckpt:
-                    utils.save_model(
-                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                        loss_scaler=loss_scaler, epoch="bestacc", model_ema=model_ema)
-            if max_ap < test_stats["ap"]:
-                max_ap = test_stats["ap"]
-                if args.output_dir and args.save_ckpt:
-                    utils.save_model(
-                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                        loss_scaler=loss_scaler, epoch="bestap", model_ema=model_ema)
             test_stats_, test_stats, plots = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
             print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats_['acc']:.1f}%")
 
