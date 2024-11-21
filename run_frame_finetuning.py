@@ -565,6 +565,24 @@ def main(args, ds_init):
         if data_loader_val is not None:
             test_stats_, test_stats, plots = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
             print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats_['acc']:.1f}%")
+            if max_accuracy < test_stats["auroc"]:
+                max_accuracy = test_stats["auroc"]
+                if args.output_dir and args.save_ckpt:
+                    utils.save_model(
+                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                        loss_scaler=loss_scaler, epoch="bestauroc", model_ema=model_ema)
+            if max_ap < test_stats["ap"]:
+                max_ap = test_stats["ap"]
+                if args.output_dir and args.save_ckpt:
+                    utils.save_model(
+                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                        loss_scaler=loss_scaler, epoch="bestap", model_ema=model_ema)
+            # epoch_save_list = (1, 3, 4, 5, 7, 15)
+            # if epoch in epoch_save_list:
+            #     utils.save_model(
+            #         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+            #         loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema
+            #     )
 
             print(f'Max accuracy: {max_accuracy:.2f}%')
             if log_writer is not None:
