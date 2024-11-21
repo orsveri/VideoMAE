@@ -177,7 +177,7 @@ def get_args():
                         help='Perform evaluation only')
     parser.add_argument('--dist_eval', action='store_true', default=False,
                         help='Enabling distributed evaluation')
-    parser.add_argument('--num_workers', default=10, type=int)
+    parser.add_argument('--num_workers', default=8, type=int)
     parser.add_argument('--pin_mem', action='store_true',
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
@@ -250,7 +250,7 @@ def main(args, ds_init):
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
     sampler_train = torch.utils.data.DistributedSampler(
-        dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+        dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True, drop_last=False
     )
     print("Sampler_train = %s" % str(sampler_train))
     if args.dist_eval:
@@ -259,9 +259,9 @@ def main(args, ds_init):
                     'This will slightly alter validation results as extra duplicate entries are added to achieve '
                     'equal num of samples per-process.')
         sampler_val = torch.utils.data.DistributedSampler(
-            dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False)
+            dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False, drop_last=False)
         sampler_test = torch.utils.data.DistributedSampler(
-            dataset_test, num_replicas=num_tasks, rank=global_rank, shuffle=False)
+            dataset_test, num_replicas=num_tasks, rank=global_rank, shuffle=False, drop_last=False)
     else:
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
@@ -282,7 +282,7 @@ def main(args, ds_init):
             batch_size=args.batch_size,
             num_workers=args.num_workers,
             pin_memory=args.pin_mem,
-            drop_last=True,
+            drop_last=False,
             prefetch_factor=4,  # orsveri
             collate_fn=collate_func,
         )
@@ -530,7 +530,7 @@ def main(args, ds_init):
         if log_writer is not None:
             log_writer.set_step(epoch * num_training_steps_per_epoch * args.update_freq)
         print("\ttraining another epoch...")
-        train_stats = train_one_epoch(
+        train_stats_, train_stats, plots = train_one_epoch(
             model, criterion, data_loader_train, optimizer,
             device, epoch, loss_scaler, args.clip_grad, model_ema, mixup_fn,
             log_writer=log_writer, start_steps=epoch * num_training_steps_per_epoch,
@@ -545,11 +545,23 @@ def main(args, ds_init):
             log_writer.update(train_recall=train_stats['recall'], head="my_train", step=epoch)
             log_writer.update(train_precision=train_stats['precision'], head="my_train", step=epoch)
             log_writer.update(train_f1=train_stats['f1'], head="my_train", step=epoch)
-        if args.output_dir and args.save_ckpt:
-            if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
-                utils.save_model(
-                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                    loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
+            #
+            log_writer.update(train_logP_mean=train_stats['logitsP_mean'], head="my_train_extra", step=epoch)
+            log_writer.update(train_logP_std=train_stats['logitsP_std'], head="my_train_extra", step=epoch)
+            log_writer.update(train_logP_median=train_stats['logitsP_median'], head="my_train_extra", step=epoch)
+            log_writer.update(train_logN_mean=train_stats['logitsN_mean'], head="my_train_extra", step=epoch)
+            log_writer.update(train_logN_std=train_stats['logitsN_std'], head="my_train_extra", step=epoch)
+            log_writer.update(train_logN_median=train_stats['logitsN_median'], head="my_train_extra", step=epoch)
+            log_writer.update(train_probs_mean=train_stats['probs_mean'], head="my_train_extra", step=epoch)
+            log_writer.update(train_probs_std=train_stats['probs_std'], head="my_train_extra", step=epoch)
+            log_writer.update(train_probs_median=train_stats['probs_median'], head="my_train_extra", step=epoch)
+            #
+            [log_writer.writer.add_figure(f"train_plots/train_{k}", fig, global_step=epoch) for k, fig in plots.items()]
+        # if args.output_dir and args.save_ckpt:
+        #     if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
+        #         utils.save_model(
+        #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+        #             loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
         if data_loader_val is not None:
             test_stats = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
             print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats['acc']:.1f}%")
@@ -565,24 +577,41 @@ def main(args, ds_init):
                     utils.save_model(
                         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
                         loss_scaler=loss_scaler, epoch="bestap", model_ema=model_ema)
+            test_stats_, test_stats, plots = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
+            print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats_['acc']:.1f}%")
 
             print(f'Max accuracy: {max_accuracy:.2f}%')
             if log_writer is not None:
-                log_writer.update(val_acc=test_stats['acc'], head="val", step=epoch)
-                log_writer.update(val_loss=test_stats['loss'], head="val", step=epoch)
+                log_writer.update(val_acc=test_stats_['acc'], head="val", step=epoch)
+                log_writer.update(val_loss=test_stats_['loss'], head="val", step=epoch)
                 log_writer.update(val_acc=test_stats['metr_acc'], head="val", step=epoch)
                 log_writer.update(val_ap=test_stats['ap'], head="val", step=epoch)
                 log_writer.update(val_auroc=test_stats['auroc'], head="val", step=epoch)
                 log_writer.update(val_recall=test_stats['recall'], head="val", step=epoch)
                 log_writer.update(val_precision=test_stats['precision'], head="val", step=epoch)
                 log_writer.update(val_f1=test_stats['f1'], head="val", step=epoch)
+                #
+                log_writer.update(val_logP_mean=test_stats['logitsP_mean'], head="val_extra", step=epoch)
+                log_writer.update(val_logP_std=test_stats['logitsP_std'], head="val_extra", step=epoch)
+                log_writer.update(val_logP_median=test_stats['logitsP_median'], head="val_extra", step=epoch)
+                log_writer.update(val_logN_mean=test_stats['logitsN_mean'], head="val_extra", step=epoch)
+                log_writer.update(val_logN_std=test_stats['logitsN_std'], head="val_extra", step=epoch)
+                log_writer.update(val_logN_median=test_stats['logitsN_median'], head="val_extra", step=epoch)
+                log_writer.update(val_probs_mean=test_stats['probs_mean'], head="val_extra", step=epoch)
+                log_writer.update(val_probs_std=test_stats['probs_std'], head="val_extra", step=epoch)
+                log_writer.update(val_probs_median=test_stats['probs_median'], head="val_extra", step=epoch)
+                #
+                [log_writer.writer.add_figure(f"val_plots/val_{k}", fig, global_step=epoch) for k, fig in plots.items()]
 
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                         **{f'train_{k}': v for k, v in train_stats_.items()},
                          **{f'val_{k}': v for k, v in test_stats.items()},
+                         **{f'val_{k}': v for k, v in test_stats_.items()},
                          'epoch': epoch,
                          'n_parameters': n_parameters}
         else:
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                         **{f'train_{k}': v for k, v in train_stats_.items()},
                          'epoch': epoch,
                          'n_parameters': n_parameters}
         if args.output_dir and utils.is_main_process():
@@ -594,14 +623,14 @@ def main(args, ds_init):
     preds_file = os.path.join(args.output_dir, str(global_rank) + '.txt')
     test_stats = final_test(data_loader_test, model, device, preds_file, with_ttc=with_ttc)
     torch.distributed.barrier()
-    if global_rank == 0:
-        print("Start merging results...")
-        final_top1 = merge(args.output_dir, num_tasks)
-        print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%")
-        log_stats = {'Final top-1': final_top1}
-        if args.output_dir and utils.is_main_process():
-            with open(os.path.join(args.output_dir, "log_test.txt"), mode="a", encoding="utf-8") as f:
-                f.write(json.dumps(log_stats) + "\n")
+    # if global_rank == 0:
+    #     print("Start merging results...")
+    #     final_top1 = merge(args.output_dir, num_tasks)
+    #     print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%")
+    #     log_stats = {'Final top-1': final_top1}
+    #     if args.output_dir and utils.is_main_process():
+    #         with open(os.path.join(args.output_dir, "log_test.txt"), mode="a", encoding="utf-8") as f:
+    #             f.write(json.dumps(log_stats) + "\n")
 
 
     total_time = time.time() - start_time

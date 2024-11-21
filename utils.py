@@ -294,8 +294,8 @@ def init_distributed_mode(args):
                                          world_size=args.world_size, rank=args.rank)
     torch.distributed.barrier()
     # assert torch.distributed.is_initialized()
-    #setup_for_distributed(args.rank == 0)
-    setup_for_distributed(True)
+    setup_for_distributed(args.rank == 0)
+    #setup_for_distributed(True)
 
 
 def load_state_dict(model, state_dict, prefix='', ignore_missing="relative_position_index"):
@@ -692,3 +692,56 @@ def brier_score_loss(predictions, targets):
     brier_loss = torch.mean((probs - target_probs) ** 2)
 
     return brier_loss
+
+def gather_predictions(preds, world_size, batch_size):
+    # Step 1: Get the number of samples for the current rank
+    num_samples = torch.tensor([len(preds)], device='cuda')
+    all_num_samples = [torch.zeros(1, device='cuda', dtype=torch.int64) for _ in range(world_size)]
+    dist.all_gather(all_num_samples, num_samples)
+    all_num_samples = [ns * batch_size for ns in all_num_samples]
+
+    # Step 2: Find the max number of samples across all ranks
+    max_samples = torch.max(torch.cat(all_num_samples)).item()
+
+    # Step 3: Pad current rank's predictions if needed
+    flattened_preds = torch.cat(preds, dim=0)
+    current_len = len(flattened_preds)
+    if current_len < max_samples:
+        padded_preds = torch.cat([flattened_preds, torch.zeros(max_samples - current_len, device='cuda')])
+    else:
+        padded_preds = flattened_preds
+
+    # Step 4: Gather all the padded predictions from all ranks
+    gathered_preds = [torch.zeros_like(padded_preds) for _ in range(world_size)]
+    dist.all_gather(gathered_preds, padded_preds)
+
+    # Step 5: Remove padding based on the original number of samples per rank
+    all_preds = []
+    for rank_idx, gathered_rank_preds in enumerate(gathered_preds):
+        actual_len = all_num_samples[rank_idx].item()
+        all_preds.append(gathered_rank_preds[:actual_len])
+
+    all_preds = torch.cat(all_preds, dim=0)
+
+    return all_preds
+
+def gather_predictions_nontensor(info, world_size):
+    # Step 1: Wrap the Python object in a list (if it's not already)
+    if not isinstance(info, list):
+        info = [info]
+
+    # Step 2: Check if the list contains tensors
+    if isinstance(info[0], torch.Tensor):
+        # Move all tensors to CPU to make sure they can be gathered
+        info = [tensor.cpu() for tensor in info]
+
+    # Step 3: Gather the info object across all ranks using all_gather_object
+    gathered_info = [None for _ in range(world_size)]
+    dist.all_gather_object(gathered_info, info)
+
+    # Step 4: Flatten the list of gathered objects
+    all_info = []
+    for rank_info in gathered_info:
+        all_info.extend(rank_info)
+
+    return all_info

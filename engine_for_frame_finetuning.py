@@ -12,10 +12,12 @@ from timm.utils import accuracy, ModelEma
 import utils
 from scipy.special import softmax
 import torchmetrics
+import torch.distributed as dist
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from dataset.vis_tools import threshold_curve_plots
-
+from utils import gather_predictions, gather_predictions_nontensor
 
 THRESHOLDS = np.arange(0.01, 1.0, 0.01).tolist()
 
@@ -50,6 +52,13 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     header = 'Epoch: [{}]'.format(epoch)
     print_freq = 10
 
+    if hasattr(data_loader, 'batch_sampler'):
+        batch_size = data_loader.batch_sampler.batch_size
+    elif hasattr(data_loader, 'batch_size'):
+        batch_size = data_loader.batch_size
+    else:
+        raise ValueError("Unable to determine batch size from DataLoader.")
+
     if loss_scaler is None:
         model.zero_grad()
         model.micro_steps = 0
@@ -58,6 +67,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
     preds = []
     labels = []
+    if_dist = dist.is_initialized()
 
     for data_iter_step, (samples, targets, _, ttc) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         gc.collect()  # Run garbage collection to clear unused memory
@@ -76,14 +86,11 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     param_group["weight_decay"] = wd_schedule_values[it]
 
         # collect labels
-        labels.append(targets.detach().cpu())  # !!
-        print("u13bk LABELS: ", labels)
+        labels.append(targets.detach().to(device, non_blocking=True) if if_dist else targets.detach().cpu())  # !!
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
         if with_ttc:
             ttc = ttc.to(device, non_blocking=True)
-
-        print(f"Iter: {data_iter_step}, Rank {utils.get_rank()}, GPU {torch.cuda.current_device()}: Data size {samples.shape}")
 
         if mixup_fn is not None:
             samples, targets = mixup_fn(samples, targets)
@@ -97,7 +104,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                 loss, output = train_class_batch(
                     model, samples, targets, criterion)
             # collect predictions
-            preds.append(output.detach().cpu())   # !!
+            preds.append(output.detach() if if_dist else output.detach().cpu())   # !!
         else:
             with torch.cuda.amp.autocast():
                 if with_ttc:
@@ -107,7 +114,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     loss, output = train_class_batch(
                         model, samples, targets, criterion)
             # collect predictions
-            preds.append(output.detach().cpu())    # !!
+            preds.append(output.detach() if if_dist else output.detach().cpu())    # !!
 
         loss_value = loss.item()
 
@@ -185,21 +192,39 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             log_writer.set_step()
 
     # Calculate total metrics
-    preds = torch.cat(preds, dim=0)
-    labels = torch.cat(labels, dim=0)
-    metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(preds, labels)
+    if if_dist:
+        preds = gather_predictions_nontensor(preds, world_size=dist.get_world_size())
+        labels = gather_predictions_nontensor(labels, world_size=dist.get_world_size())
+    all_preds = torch.cat(preds, dim=0)
+    all_labels = torch.cat(labels, dim=0)
+    my_metrics = {}
+    metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(all_preds, all_labels)
     # Log them
-    metric_logger.meters['metr_acc'].update(metr_acc, n=len(data_loader.dataset))
-    metric_logger.meters['recall'].update(recall, n=len(data_loader.dataset))
-    metric_logger.meters['precision'].update(precision, n=len(data_loader.dataset))
-    metric_logger.meters['f1'].update(f1, n=len(data_loader.dataset))
-    metric_logger.meters['auroc'].update(auroc, n=len(data_loader.dataset))
-    metric_logger.meters['ap'].update(ap, n=len(data_loader.dataset))
+    my_metrics['metr_acc'] = metr_acc
+    my_metrics['recall'] = recall
+    my_metrics['precision'] = precision
+    my_metrics['f1'] = f1
+    my_metrics['auroc'] = auroc
+    my_metrics['ap'] = ap
+    # extra metrics
+    values = torch.nn.functional.softmax(all_preds, dim=1)
+    values = values[:, 1]
+    my_metrics['logitsP_mean'] = all_preds[:, 1].mean().item()
+    my_metrics['logitsP_std'] = all_preds[:, 1].std().item()
+    my_metrics['logitsP_median'] = all_preds[:, 1].median().item()
+    my_metrics['logitsN_mean'] = all_preds[:, 0].mean().item()
+    my_metrics['logitsN_std'] = all_preds[:, 0].std().item()
+    my_metrics['logitsN_median'] = all_preds[:, 0].median().item()
+    my_metrics['probs_mean'] = values.mean().item()
+    my_metrics['probs_std'] = values.std().item()
+    my_metrics['probs_median'] = values.median().item()
+    # plot figures
+    plots = plot_figures(confmat, pr_curve, roc_curve)
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, my_metrics, plots
 
 
 @torch.no_grad()
@@ -233,8 +258,8 @@ def validation_one_epoch(data_loader, model, device, with_ttc=False):
                 loss = criterion(output, target)
 
         # collect predictions
-        preds.append(output.cpu().detach())
-        labels.append(target.cpu().detach())
+        preds.append(output.detach() if dist.is_initialized() else output.cpu().detach())
+        labels.append(target.detach().to(device, non_blocking=True) if dist.is_initialized() else target.cpu().detach())
 
         acc = accuracy(output, target, topk=(1,))[0]
 
@@ -243,23 +268,41 @@ def validation_one_epoch(data_loader, model, device, with_ttc=False):
         metric_logger.meters['acc'].update(acc.item(), n=batch_size)
 
     # Calculate total metrics
-    preds = torch.cat(preds, dim=0)
-    labels = torch.cat(labels, dim=0)
-    metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(preds, labels)
+    if dist.is_initialized():
+        preds = gather_predictions_nontensor(preds, world_size=dist.get_world_size())
+        labels = gather_predictions_nontensor(labels, world_size=dist.get_world_size())
+    all_preds = torch.cat(preds, dim=0)
+    all_labels = torch.cat(labels, dim=0)
+    metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(all_preds, all_labels)
     # Log them
-    metric_logger.meters['metr_acc'].update(metr_acc, n=len(data_loader.dataset))
-    metric_logger.meters['recall'].update(recall, n=len(data_loader.dataset))
-    metric_logger.meters['precision'].update(precision, n=len(data_loader.dataset))
-    metric_logger.meters['f1'].update(f1, n=len(data_loader.dataset))
-    metric_logger.meters['auroc'].update(auroc, n=len(data_loader.dataset))
-    metric_logger.meters['ap'].update(ap, n=len(data_loader.dataset))
+    my_metrics = {}
+    my_metrics['metr_acc'] = metr_acc
+    my_metrics['recall'] = recall
+    my_metrics['precision'] = precision
+    my_metrics['f1'] = f1
+    my_metrics['auroc'] = auroc
+    my_metrics['ap'] = ap
+    # extra metrics
+    values = torch.nn.functional.softmax(all_preds, dim=1)
+    values = values[:, 1]
+    my_metrics['logitsP_mean'] = all_preds[:, 1].mean().item()
+    my_metrics['logitsP_std'] = all_preds[:, 1].std().item()
+    my_metrics['logitsP_median'] = all_preds[:, 1].median().item()
+    my_metrics['logitsN_mean'] = all_preds[:, 0].mean().item()
+    my_metrics['logitsN_std'] = all_preds[:, 0].std().item()
+    my_metrics['logitsN_median'] = all_preds[:, 0].median().item()
+    my_metrics['probs_mean'] = values.mean().item()
+    my_metrics['probs_std'] = values.std().item()
+    my_metrics['probs_median'] = values.median().item()
+    #
+    plots = plot_figures(confmat, pr_curve, roc_curve)
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print('* Acc@1 {top1.global_avg:.3f} AP {ap} loss {losses.global_avg:.3f}'
           .format(top1=metric_logger.acc, ap=ap, losses=metric_logger.loss))
 
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, my_metrics, plots
 
 
 @torch.no_grad()
@@ -291,8 +334,8 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
 
         clips.extend(clips_batch)
         frame_names.extend(frame_batch)
-        labels.append(target.detach())
-        ttcs.append(ttc.clone().detach())
+        labels.append(target.detach().to(device, non_blocking=True) if dist.is_initialized() else output.detach())
+        ttcs.append(ttc.clone().detach().to(device, non_blocking=True) if dist.is_initialized() else ttc.clone().detach().cpu())
 
         videos = videos.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
@@ -312,7 +355,7 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
             final_result.append(string)
 
         # collect predictions
-        preds.append(output.cpu().detach())
+        preds.append(output.detach() if dist.is_initialized() else output.cpu().detach())
 
         acc1 = accuracy(output, target, topk=(1,))[0]
 
@@ -321,38 +364,48 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
 
     # calculate metrics
-    preds = torch.cat(preds, dim=0)
-    labels = torch.cat(labels, dim=0)
-    logits = torch.clone(preds).detach()
-    preds = torch.nn.functional.softmax(preds, dim=1)
-    values = preds[:, 1]
-    _, preds = torch.max(preds, 1)
-    metr_acc = torchmetrics.functional.accuracy(preds=preds, target=labels, task="binary").item()
-    recall = torchmetrics.functional.recall(preds=preds, target=labels, task="binary").item()
-    precision = torchmetrics.functional.precision(preds=preds, target=labels, task="binary").item()
-    f1 = torchmetrics.functional.f1_score(preds=preds, target=labels, task="binary").item()
-    confmat = torchmetrics.functional.confusion_matrix(preds=preds, target=labels, task="binary").detach().tolist()
+    if dist.is_initialized():
+        preds = gather_predictions_nontensor(preds, world_size=dist.get_world_size())
+        labels = gather_predictions_nontensor(labels, world_size=dist.get_world_size())
+        ttcs = gather_predictions_nontensor(ttcs, world_size=dist.get_world_size())
+        all_clips = gather_predictions_nontensor(clips, world_size=dist.get_world_size())
+        all_filenames = gather_predictions_nontensor(frame_names, world_size=dist.get_world_size())
+    else:
+        all_clips = clips
+        all_filenames = frame_names
+    all_preds = torch.cat(preds, dim=0)
+    all_labels = torch.cat(labels, dim=0)
+    all_ttcs = torch.cat(ttcs, dim=0)
+    logits = torch.clone(all_preds).detach()
+    all_preds = torch.nn.functional.softmax(all_preds, dim=1)
+    values = all_preds[:, 1]
+    _, all_preds = torch.max(all_preds, 1)
+    metr_acc = torchmetrics.functional.accuracy(preds=all_preds, target=all_labels, task="binary").item()
+    recall = torchmetrics.functional.recall(preds=all_preds, target=all_labels, task="binary").item()
+    precision = torchmetrics.functional.precision(preds=all_preds, target=all_labels, task="binary").item()
+    f1 = torchmetrics.functional.f1_score(preds=all_preds, target=all_labels, task="binary").item()
+    confmat = torchmetrics.functional.confusion_matrix(preds=all_preds, target=all_labels, task="binary").detach().tolist()
     auroc = torchmetrics.functional.auroc(
         preds=values,
-        target=labels,
+        target=all_labels,
         task="binary",
         thresholds=THRESHOLDS
     ).item()
     ap = torchmetrics.functional.average_precision(
         preds=values,
-        target=labels,
+        target=all_labels,
         task="binary",
         thresholds=THRESHOLDS
     ).item()
     pr_curve = torchmetrics.functional.precision_recall_curve(
         preds=values,
-        target=labels,
+        target=all_labels,
         task="binary",
         thresholds=THRESHOLDS
     )
     roc_curve = torchmetrics.functional.roc(
         preds=values,
-        target=labels,
+        target=all_labels,
         task="binary",
         thresholds=THRESHOLDS
     )
@@ -384,16 +437,17 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
     #     f.write("{}\n".format(acc1))
     #     for line in final_result:
     #         f.write(line)
-    ttcs = torch.cat(ttcs, dim=0).numpy()
-    labels = labels.numpy().astype(int)
-    logits = logits.numpy()
+
+    all_labels = all_labels.detach().cpu().numpy().astype(int)
+    logits = logits.detach().cpu().numpy()
+    all_ttcs = all_ttcs.detach().cpu().numpy()
     df = pd.DataFrame({
-        "clip": clips,
-        "filename": frame_names,
+        "clip": all_clips,
+        "filename": all_filenames,
         "logits_safe": logits[:, 0],
         "logits_risk": logits[:, 1],
-        "label": labels,
-        "ttc": ttcs
+        "label": all_labels,
+        "ttc": all_ttcs
     })
     df.to_csv(file, index=True, header=True)
     # gather the stats from all processes
@@ -483,3 +537,26 @@ def calculate_metrics(preds, labels):
         thresholds=THRESHOLDS
     )
     return metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve
+
+
+def plot_figures(confmat, pr_curve, roc_curve):
+    # plot figures
+    df_cm = pd.DataFrame(confmat)
+    fig1 = sns.heatmap(df_cm, annot=True, cmap='Spectral').get_figure()
+    plt.close(fig1)
+    pr_precision, pr_recall, pr_thresholds = pr_curve
+    fig2 = threshold_curve_plots(
+        x_values=pr_recall.tolist(), y_values=pr_precision.tolist(), thresholds=pr_thresholds.tolist() + [1.],
+        x_label="Recall", y_label="Precision", plot_name="PR curve",
+        score=True, to_img=False
+    )
+    plt.close(fig2)
+    roc_fpr, roc_tpr, roc_thresholds = roc_curve
+    fig3 = threshold_curve_plots(
+        x_values=roc_fpr.tolist(), y_values=roc_tpr.tolist(), thresholds=roc_thresholds.tolist(),
+        x_label="FP rate", y_label="TP rate", plot_name="ROC curve",
+        score=True, to_img=False
+    )
+    plt.close(fig3)
+    plots = {"confusion_matrix": fig1, "PR_curve": fig2, "ROC_curve": fig3}
+    return plots
