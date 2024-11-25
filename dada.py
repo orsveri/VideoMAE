@@ -82,7 +82,6 @@ class FrameClsDataset_DADA(Dataset):
             self.test_label_array = self.label_array
 
     def _read_anno(self):
-        clip_names = None
         clip_timesteps = []
         clip_binary_labels = []
         clip_cat_labels = []
@@ -94,17 +93,18 @@ class FrameClsDataset_DADA(Dataset):
         with open(os.path.join(self.data_path, self.anno_path), 'r') as file:
             clip_names = [line.rstrip() for line in file]
 
-        #df = pd.read_csv(os.path.join(os.path.dirname(self.data_path), "full_anno.csv"))
         df = pd.read_csv(os.path.join(os.path.dirname(self.data_path), "full_anno.csv"))
+        df_split = pd.read_csv("/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000/DADA2K_my_split/training.csv")
 
         for clip in clip_names:
             clip_type, clip_subfolder = clip.split("/")
-            # row = df[(df["video"] == int(clip_subfolder)) & (df["type"] == int(clip_type))]
-            # info = f"clip: {clip}, type: {clip_type}, subfolder: {clip_subfolder}, rows found: {row}"
-            # #assert len(row) == 1, f"Multiple results! \n{info}"
-            # if len(row) != 1:
-            #     errors.append(info)
-            #     continue
+            row = df[(df["video"] == int(clip_subfolder)) & (df["type"] == int(clip_type))]
+            info = f"clip: {clip}, type: {clip_type}, subfolder: {clip_subfolder}, rows found: {row}"
+            description_csv = row["texts"]
+            #assert len(row) == 1, f"Multiple results! \n{info}"
+            if len(row) != 1:
+                errors.append(info)
+                exit(0)  # continue
 
             framenames = natsorted([f for f in os.listdir(os.path.join(self.data_path, "rgb_videos", clip)) if os.path.splitext(f)[1]==".jpg"])
             timesteps = [int(os.path.splitext(f)[0].split("_")[-1]) for f in framenames]
@@ -438,3 +438,5 @@ def tensor_normalize(tensor, mean, std):
     tensor = tensor / std
     return tensor
 
+
+dset = FrameClsDataset_DADA(anno_path="annotation/training.txt", data_path="/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000")

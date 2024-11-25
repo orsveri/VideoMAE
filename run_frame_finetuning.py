@@ -223,7 +223,6 @@ def main(args, ds_init):
         print(f"Initialization failed for rank {utils.get_rank()}: {e}")
         exit(1)
 
-
     if ds_init is not None:
         utils.create_ds_config(args)
 
@@ -237,22 +236,25 @@ def main(args, ds_init):
     np.random.seed(seed)
     # random.seed(seed)
 
+    cudnn.enabled = True
     cudnn.benchmark = True
 
+    num_tasks = utils.get_world_size()
+    global_rank = utils.get_rank()
+
+    dataset_train = None
     if not args.eval:
         dataset_train, args.nb_classes = build_frame_dataset(is_train=True, test_mode=False, args=args)
+        sampler_train = torch.utils.data.DistributedSampler(
+            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True, drop_last=False
+        )
+        print("Sampler_train = %s" % str(sampler_train))
     if args.disable_eval_during_finetuning:
         dataset_val = None
     else:
         dataset_val, _ = build_frame_dataset(is_train=False, test_mode=False, args=args)
     dataset_test, _ = build_frame_dataset(is_train=False, test_mode=True, args=args)
 
-    num_tasks = utils.get_world_size()
-    global_rank = utils.get_rank()
-    sampler_train = torch.utils.data.DistributedSampler(
-        dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True, drop_last=False
-    )
-    print("Sampler_train = %s" % str(sampler_train))
     if args.dist_eval:
         if len(dataset_val) % num_tasks != 0:
             print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
@@ -412,16 +414,17 @@ def main(args, ds_init):
     print("Model = %s" % str(model_without_ddp))
     print('number of params:', n_parameters)
 
-    total_batch_size = args.batch_size * args.update_freq * utils.get_world_size()
-    num_training_steps_per_epoch = len(dataset_train) // total_batch_size
-    args.lr = args.lr * total_batch_size / 256
-    args.min_lr = args.min_lr * total_batch_size / 256
-    args.warmup_lr = args.warmup_lr * total_batch_size / 256
-    print("LR = %.8f" % args.lr)
-    print("Batch size = %d" % total_batch_size)
-    print("Update frequent = %d" % args.update_freq)
-    print("Number of training examples = %d" % len(dataset_train))
-    print("Number of training training per epoch = %d" % num_training_steps_per_epoch)
+    if not args.eval:
+        total_batch_size = args.batch_size * args.update_freq * utils.get_world_size()
+        num_training_steps_per_epoch = len(dataset_train) // total_batch_size
+        args.lr = args.lr * total_batch_size / 256
+        args.min_lr = args.min_lr * total_batch_size / 256
+        args.warmup_lr = args.warmup_lr * total_batch_size / 256
+        print("LR = %.8f" % args.lr)
+        print("Batch size = %d" % total_batch_size)
+        print("Update frequent = %d" % args.update_freq)
+        print("Number of training examples = %d" % len(dataset_train))
+        print("Number of training training per epoch = %d" % num_training_steps_per_epoch)
 
     num_layers = model_without_ddp.get_num_layers()
     if args.layer_decay < 1.0:
@@ -458,16 +461,17 @@ def main(args, ds_init):
             get_layer_scale=assigner.get_scale if assigner is not None else None)
         loss_scaler = NativeScaler()
 
-    print("Use step level LR scheduler!")
-    lr_schedule_values = utils.cosine_scheduler(
-        args.lr, args.min_lr, args.epochs, num_training_steps_per_epoch,
-        warmup_epochs=args.warmup_epochs, warmup_steps=args.warmup_steps,
-    )
-    if args.weight_decay_end is None:
-        args.weight_decay_end = args.weight_decay
-    wd_schedule_values = utils.cosine_scheduler(
-        args.weight_decay, args.weight_decay_end, args.epochs, num_training_steps_per_epoch)
-    print("Max WD = %.7f, Min WD = %.7f" % (max(wd_schedule_values), min(wd_schedule_values)))
+    if not args.eval:
+        print("Use step level LR scheduler!")
+        lr_schedule_values = utils.cosine_scheduler(
+            args.lr, args.min_lr, args.epochs, num_training_steps_per_epoch,
+            warmup_epochs=args.warmup_epochs, warmup_steps=args.warmup_steps,
+        )
+        if args.weight_decay_end is None:
+            args.weight_decay_end = args.weight_decay
+        wd_schedule_values = utils.cosine_scheduler(
+            args.weight_decay, args.weight_decay_end, args.epochs, num_training_steps_per_epoch)
+        print("Max WD = %.7f, Min WD = %.7f" % (max(wd_schedule_values), min(wd_schedule_values)))
 
     mixup_fn = None
     # if mixup_fn is not None:

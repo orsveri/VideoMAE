@@ -17,6 +17,8 @@ import volume_transforms as volume_transforms
 
 from dataset.sequencing import RegularSequencer, UnsafeOverlapSequencer
 
+import numpy as np
+
 
 class FrameClsDataset(Dataset):
     """Load your own video classification dataset."""
@@ -42,6 +44,8 @@ class FrameClsDataset(Dataset):
         self.test_num_segment = test_num_segment
         self.num_crop = num_crop
         self.test_num_crop = test_num_crop
+        self.ttc_TT = 1.
+        self.ttc_TA = 0.5
         self.args = args
         self.aug = False
         self.rand_erase = False
@@ -106,10 +110,12 @@ class FrameClsDataset(Dataset):
                 clip_cat_labels.append(cat_labels)
                 clip_ego.append(if_ego)
                 clip_night.append(if_night)
+
         assert len(clip_names) == len(clip_timesteps) == len(clip_binary_labels) == len(clip_cat_labels)
         self.clip_names = clip_names
         self.clip_timesteps = clip_timesteps
         self.clip_bin_labels = clip_binary_labels
+        self.clip_ttc = [compute_time_vector(cbl, fps=self.orig_fps, TT=self.ttc_TT, TA=self.ttc_TA) for cbl in clip_binary_labels]
         self.clip_cat_labels = clip_cat_labels
         self.clip_ego = clip_ego
         self.clip_night = clip_night
@@ -127,7 +133,7 @@ class FrameClsDataset(Dataset):
                 continue
             dataset_sequences.extend([(i, seq) for seq in sequences])
             label_array.extend([self.clip_bin_labels[i][seq[-1]] for seq in sequences])
-            ttc.extend([2.7 for seq in sequences])
+            ttc.extend([self.clip_ttc[i][seq[-1]] for seq in sequences])
         self.dataset_samples = dataset_sequences
         self.label_array = label_array
         self.ttc = ttc
@@ -293,6 +299,60 @@ class FrameClsDataset(Dataset):
             return len(self.dataset_samples)
         else:
             return len(self.test_dataset)
+
+
+# before 1/(1+exp(-6*(x+1))), after 1/(1+exp(-12*(-x+0.5)))
+def compute_time_vector(labels, fps, TT=2, TA=1):
+    """
+    Compute time vector reflecting time in seconds before or after anomaly range.
+
+    Parameters:
+        labels (list or np.ndarray): Binary vector of frame labels (1 for anomalous, 0 otherwise).
+        fps (int): Frames per second of the video.
+        TT (float): Time-to-anomalous range in seconds (priority).
+        TA (float): Time-after-anomalous range in seconds.
+
+    Returns:
+        np.ndarray: Time vector for each frame.
+    """
+    num_frames = len(labels)
+    labels = np.array(labels)
+    default_value = max(TT, TA) * 2
+    time_vector = np.zeros(num_frames, dtype=float)
+
+    # Get anomaly start and end indices
+    anomaly_indices = np.where(labels == 1)[0]
+    if len(anomaly_indices) == 0:
+        return time_vector  # No anomalies, return all zeros
+
+    # Define maximum frame thresholds for TT and TA
+    TT_frames = int(TT * fps)
+    TA_frames = int(TA * fps)
+
+    # Iterate through each frame
+    for i in range(num_frames):
+        if labels[i] == 1:
+            time_vector[i] = 0  # Anomalous frame, set to 0
+        else:
+            # Find distances to the start and end of anomaly ranges
+            distances_to_anomalies = anomaly_indices - i
+
+            # Time-to-closest-anomaly-range (TT priority)
+            closest_to_anomaly = distances_to_anomalies[distances_to_anomalies > 0]  # After the frame
+            if len(closest_to_anomaly) > 0 and closest_to_anomaly[0] <= TT_frames:
+                time_vector[i] = -closest_to_anomaly[0] / fps
+                continue
+
+            # Time-after-anomaly-range (TA range)
+            closest_after_anomaly = distances_to_anomalies[distances_to_anomalies < 0]  # Before the frame
+            if len(closest_after_anomaly) > 0 and abs(closest_after_anomaly[-1]) <= TA_frames:
+                time_vector[i] = -closest_after_anomaly[-1] / fps
+                continue
+
+            # Outside both TT and TA
+            time_vector[i] = -100.
+
+    return time_vector
 
 
 def spatial_sampling(
