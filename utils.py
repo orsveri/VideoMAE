@@ -8,6 +8,7 @@ from collections import defaultdict, deque
 import datetime
 import numpy as np
 from timm.utils import get_state_dict
+from torch.special import logit
 from torch.utils.data._utils.collate import default_collate
 from pathlib import Path
 import subprocess
@@ -745,3 +746,143 @@ def gather_predictions_nontensor(info, world_size):
         all_info.extend(rank_info)
 
     return all_info
+
+
+# class TemporalProximityLoss(nn.Module):
+#     def __init__(self):
+#         super().__init__()
+#         self.sigmoid_before = lambda x: 1 / (1 + torch.exp(-6 * (x + 1)))
+#         self.sigmoid_after = lambda x: 1 / (1 + torch.exp(-12 * (-x + 0.5)))
+#
+#     def forward(self, logits, labels, time_to_anomaly):
+#         """
+#         logits: Tensor of shape (N, 2) - predicted logits for safe and anomalous classes
+#         labels: Tensor of shape (N,) - binary labels (0 for safe, 1 for anomalous)
+#         time_to_anomaly: Tensor of shape (N,) - time-to-anomaly values for each frame
+#         """
+#         probs_anomaly = torch.softmax(logits, dim=1)[:, 1]  # Probability of anomalous class
+#
+#         # Temporal proximity penalty
+#         penalty = torch.zeros_like(labels, dtype=torch.float32)
+#         penalty[time_to_anomaly > 0] = self.sigmoid_before(time_to_anomaly[time_to_anomaly > 0])
+#         penalty[time_to_anomaly < 0] = self.sigmoid_after(time_to_anomaly[time_to_anomaly < 0])
+#
+#         # Combine penalties with anomaly probabilities
+#         temporal_loss = penalty * (1 - labels) * probs_anomaly  # Penalize false positives
+#         return temporal_loss.mean()
+
+# It doesn't work
+# class TemporalProximityLoss(nn.Module):
+#     def __init__(self):
+#         super().__init__()
+#         self.cross_entropy = nn.CrossEntropyLoss(reduction='none')
+#         self.safe_sigmoid_before = lambda x: 1 / (1 + torch.exp(-6 * (x + 1)))
+#         self.safe_sigmoid_after = lambda x: 1 / (1 + torch.exp(-12 * (-x + 0.5)))
+#         self.anomaly_sigmoid_before = lambda x: 1 / (1 + torch.exp(6 * (x + 1)))
+#         self.anomaly_sigmoid_after = lambda x: 1 / (1 + torch.exp(12 * (-x + 0.5)))
+#
+#
+#     def forward(self, logits, labels, time_to_anomaly, t_A1, t_B1):
+#         """
+#         logits: Tensor of shape (N, 2) - predicted logits for safe and anomalous classes
+#         labels: Tensor of shape (N,) - binary labels (0 for safe, 1 for anomalous)
+#         time_to_anomaly: Tensor of shape (N,) - time-to-anomaly values for each frame
+#         t_A, t_B: Scalars - start and end of anomaly range
+#         t_A1, t_B1: Scalars - start of extended range before and after anomaly
+#         """
+#         probs = torch.softmax(logits, dim=1)  # Probabilities for both classes
+#         probs_safe = probs[:, 0]  # Probability of safe class
+#         probs_anomaly = probs[:, 1]  # Probability of anomalous class
+#
+#         # Step 1: Temporal penalties
+#         penalty_safe = torch.zeros_like(labels, dtype=torch.float32)  # Default scaling factor
+#         penalty_anomaly = torch.ones_like(labels, dtype=torch.float32)  # Default scaling factor
+#
+#         # Before anomaly range [t_A1, t_A]
+#         before_mask = (time_to_anomaly >= t_A1) & (time_to_anomaly < 0)
+#         after_mask = (time_to_anomaly > 0) & (time_to_anomaly <= t_B1)
+#         penalty_safe[before_mask] = self.safe_sigmoid_before(time_to_anomaly[before_mask])
+#         penalty_safe[after_mask] = self.safe_sigmoid_after(time_to_anomaly[after_mask])
+#         penalty_anomaly[before_mask] = self.anomaly_sigmoid_before(time_to_anomaly[before_mask])
+#         penalty_anomaly[after_mask] = self.anomaly_sigmoid_after(time_to_anomaly[after_mask])
+#
+#         # Step 2: Cross-entropy loss
+#         ce_loss = self.cross_entropy(logits, labels)  # Per-sample cross-entropy loss
+#         probs = nn.functional.softmax(logits, dim=-1)
+#         loss_safe = np.abs(probs[0] - labels)
+#         loss_anomaly = np.abs(probs[1] - labels)
+#
+#         # Step 3: Scale the loss
+#         scaled_loss = ce_loss.clone()
+#         # For safe class (labels == 0)
+#         loss_safe[labels == 0] += penalty_safe[labels == 0]
+#         # For anomalous class (labels == 1)
+#         loss_anomaly[labels == 0] *= penalty_anomaly[labels == 0]
+#         scaled_loss = loss_safe + loss_anomaly
+#
+#         # Step 4: Combine losses
+#         return scaled_loss, penalty_anomaly, penalty_safe  #.mean()
+
+
+class DoubleBCELoss(nn.Module):
+    def __init__(self, alpha=1, gamma=2, reduction='mean', multiplier=1.):
+        super(DoubleBCELoss, self).__init__()
+        self.bce_loss = nn.BCEWithLogitsLoss(reduction='none')
+
+    def forward(self, logits, smoothed_labels):
+        """
+        logits: Tensor of shape (N, 2) - output logits from the model for the two classes
+        smoothed_labels: Tensor of shape (N, 2) - temporally smoothed labels for both neurons/classes
+
+        Returns:
+            Total loss (scalar): Sum of BCE losses for each class
+            Individual losses: Tensor of shape (N, 2) - losses for each sample and each class
+        """
+        # Separate logits and labels for each neuron/class
+        logits_safe, logits_anomaly = logits[:, 0], logits[:, 1]
+        labels_safe, labels_anomaly = smoothed_labels[:, 0], smoothed_labels[:, 1]
+
+        # Calculate BCE loss for each neuron
+        loss_safe = self.bce_loss(logits_safe, labels_safe)
+        loss_anomaly = self.bce_loss(logits_anomaly, labels_anomaly)
+
+        # Combine losses
+        total_loss = (loss_safe + loss_anomaly).mean()  # Sum losses for both classes, then take mean over all samples
+        individual_losses = torch.stack([loss_safe, loss_anomaly], dim=1)  # Shape: (N, 2)
+
+        # return total_loss, individual_losses
+        return total_loss
+
+
+def generate_smooth_labels(time_to_anomaly, t_A, t_B, t_A1, t_B1):
+    """
+    time_to_anomaly: Tensor of shape (N,) - time-to-anomaly values
+    t_A, t_B: Scalars - start and end of anomaly range
+    t_A1, t_B1: Scalars - start of extended range before and after anomaly
+    """
+    smooth_labels = torch.zeros_like(time_to_anomaly, dtype=torch.float32)
+
+    # Anomaly range
+    smooth_labels[(time_to_anomaly >= t_A) & (time_to_anomaly <= t_B)] = 1.0
+
+    # Transition periods
+    sigmoid_before = lambda x: 1 / (1 + torch.exp(-6 * (x + 1)))
+    sigmoid_after = lambda x: 1 / (1 + torch.exp(-12 * (-x + 0.5)))
+
+    smooth_labels[(time_to_anomaly > t_A1) & (time_to_anomaly < t_A)] = \
+        sigmoid_before(time_to_anomaly[(time_to_anomaly > t_A1) & (time_to_anomaly < t_A)] - t_A)
+    smooth_labels[(time_to_anomaly > t_B) & (time_to_anomaly < t_B1)] = \
+        sigmoid_after(time_to_anomaly[(time_to_anomaly > t_B) & (time_to_anomaly < t_B1)] - t_B)
+
+    return smooth_labels
+
+
+def calculate_regression_metrics(probs_anomaly, smooth_labels):
+    """
+    probs_anomaly: Tensor of shape (N,) - predicted probabilities of anomalous class
+    smooth_labels: Tensor of shape (N,) - temporally smoothed labels
+    """
+    mse = torch.mean((probs_anomaly - smooth_labels) ** 2)
+    mae = torch.mean(torch.abs(probs_anomaly - smooth_labels))
+    return mse, mae
+

@@ -17,7 +17,7 @@ import video_transforms as video_transforms
 import volume_transforms as volume_transforms
 
 from dataset.sequencing import RegularSequencer, UnsafeOverlapSequencer
-
+from dataset.data_utils import smooth_labels, compute_time_vector
 
 
 class FrameClsDataset_DADA(Dataset):
@@ -25,7 +25,7 @@ class FrameClsDataset_DADA(Dataset):
     ego_categories = [str(cat) for cat in list(range(1, 19)) + [61, 62]]
 
     def __init__(self, anno_path, data_path, mode='train',
-                 view_len=8, target_fps=10, orig_fps=10, view_step=10,
+                 view_len=8, target_fps=10, orig_fps=30, view_step=10,
                  crop_size=224, short_side_size=256,
                  new_height=256, new_width=340, keep_aspect_ratio=True,
                  num_segment=1, num_crop=1, test_num_segment=1, test_num_crop=1, args=None):
@@ -42,6 +42,8 @@ class FrameClsDataset_DADA(Dataset):
         self.test_num_segment = test_num_segment
         self.num_crop = num_crop
         self.test_num_crop = test_num_crop
+        self.ttc_TT = args.ttc_TT if hasattr(args, "ttc_TT") else 2.
+        self.ttc_TA = args.ttc_TA if hasattr(args, "ttc_TA") else 1.
         self.args = args
         self.aug = False
         self.rand_erase = False
@@ -53,10 +55,15 @@ class FrameClsDataset_DADA(Dataset):
         self._read_anno()
         self._prepare_views()
         assert len(self.dataset_samples) > 0
-        assert len(self.label_array) > 0
+        assert len(self._label_array) > 0
 
-        count_safe = self.label_array.count(0)
-        count_risk = self.label_array.count(1)
+        if self.args.loss in ("2bce",):
+            self.label_array = self._smoothed_label_array
+        else:
+            self.label_array = self._label_array
+
+        count_safe = self._label_array.count(0)
+        count_risk = self._label_array.count(1)
         print(f"\n\n===\n[{mode}] | COUNT safe: {count_safe}\nCOUNT risk: {count_risk}\n===")
 
         if (mode == 'train'):
@@ -87,27 +94,28 @@ class FrameClsDataset_DADA(Dataset):
         clip_cat_labels = []
         clip_ego = []
         clip_toa = []
+        clip_ttc = []
+        clip_smoothed_labels = []
 
         errors = []
 
         with open(os.path.join(self.data_path, self.anno_path), 'r') as file:
             clip_names = [line.rstrip() for line in file]
 
-        df = pd.read_csv(os.path.join(os.path.dirname(self.data_path), "full_anno.csv"))
-        df_split = pd.read_csv("/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000/DADA2K_my_split/training.csv")
+        df = pd.read_csv(os.path.join(self.data_path, "annotation", "full_anno.csv"))
 
         for clip in clip_names:
             clip_type, clip_subfolder = clip.split("/")
             row = df[(df["video"] == int(clip_subfolder)) & (df["type"] == int(clip_type))]
             info = f"clip: {clip}, type: {clip_type}, subfolder: {clip_subfolder}, rows found: {row}"
             description_csv = row["texts"]
-            #assert len(row) == 1, f"Multiple results! \n{info}"
+            assert len(row) == 1, f"Multiple results! \n{info}"
             if len(row) != 1:
                 errors.append(info)
-                exit(0)  # continue
-
-            framenames = natsorted([f for f in os.listdir(os.path.join(self.data_path, "rgb_videos", clip)) if os.path.splitext(f)[1]==".jpg"])
-            timesteps = [int(os.path.splitext(f)[0].split("_")[-1]) for f in framenames]
+            row = row.iloc[0]
+            with zipfile.ZipFile(os.path.join(self.data_path, "frames", clip, "images.zip"), 'r') as zipf:
+                framenames = natsorted([f for f in zipf.namelist() if os.path.splitext(f)[1]==".png"])
+            timesteps = natsorted([int(os.path.splitext(f)[0].split("_")[-1]) for f in framenames])
             if_acc_video = int(row["whether an accident occurred (1/0)"])
             if if_acc_video:
                 st = int(row["abnormal start frame"])
@@ -118,17 +126,23 @@ class FrameClsDataset_DADA(Dataset):
             cat_labels = [l*clip_type for l in binary_labels]
             if_ego = clip_type in self.ego_categories
             toa = row["accident frame"]
+            ttc = compute_time_vector(binary_labels, fps=self.orig_fps, TT=self.ttc_TT, TA=self.ttc_TA)
+            smoothed_labels = smooth_labels(labels=torch.Tensor(binary_labels), time_vector=ttc,
+                                            before_limit=self.ttc_TT, after_limit=self.ttc_TA)
 
             clip_timesteps.append(timesteps)
             clip_binary_labels.append(binary_labels)
             clip_cat_labels.append(cat_labels)
             clip_ego.append(if_ego)
             clip_toa.append(toa)
+            clip_ttc.append(ttc)
+            clip_smoothed_labels.append(smoothed_labels)
 
         for line in errors:
             print(line)
-        print(f"\n====\nerrors: {len(errors)}")
-        exit(0)
+        if len(errors) > 0:
+            print(f"\n====\nerrors: {len(errors)}. You can add saving the error list in the code.")
+            exit(0)
 
         assert len(clip_names) == len(clip_timesteps) == len(clip_binary_labels) == len(clip_cat_labels)
         self.clip_names = clip_names
@@ -137,11 +151,14 @@ class FrameClsDataset_DADA(Dataset):
         self.clip_cat_labels = clip_cat_labels
         self.clip_ego = clip_ego
         self.clip_toa = clip_toa
+        self.clip_ttc = clip_ttc
+        self.clip_smoothed_labels = clip_smoothed_labels
 
     def _prepare_views(self):
         dataset_sequences = []
         label_array = []
         ttc = []
+        smoothed_label_array = []
         sequencer = RegularSequencer(seq_frequency=self.target_fps, seq_length=self.view_len, step=self.view_step)
         N = len(self.clip_names)
         for i in range(N):
@@ -151,64 +168,72 @@ class FrameClsDataset_DADA(Dataset):
                 continue
             dataset_sequences.extend([(i, seq) for seq in sequences])
             label_array.extend([self.clip_bin_labels[i][seq[-1]] for seq in sequences])
-            ttc.extend([2.7 for seq in sequences])
+            smoothed_label_array.extend([self.clip_smoothed_labels[i][seq[-1]] for seq in sequences])
+            ttc.extend([self.clip_ttc[i][seq[-1]] for seq in sequences])
         self.dataset_samples = dataset_sequences
-        self.label_array = label_array
+        self._label_array = label_array
         self.ttc = ttc
+        self._smoothed_label_array = smoothed_label_array
 
     def __getitem__(self, index):
         if self.mode == 'train':
             args = self.args
             sample = self.dataset_samples[index]
-            buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)  # T H W C
+            buffer, _, __ = self.load_images_zip(sample, final_resize=False, resize_scale=1.)  # T H W C
             if len(buffer) == 0:
                 while len(buffer) == 0:
                     warnings.warn("video {} not correctly loaded during training".format(sample))
                     index = np.random.randint(self.__len__())
                     sample = self.dataset_samples[index]
-                    buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)
+                    buffer, _, __ = self.load_images_zip(sample, final_resize=False, resize_scale=1.)
 
             if args.num_sample > 1:
                 frame_list = []
                 label_list = []
+                smoothed_label_list = []
                 index_list = []
                 ttc_list = []
                 for _ in range(args.num_sample):
                     new_frames = self._aug_frame(buffer, args)
                     label = self.label_array[index]
+                    smoothed_label = self._smoothed_label_array[index]
                     ttc = self.ttc[index]
                     frame_list.append(new_frames)
                     label_list.append(label)
+                    smoothed_label_list.append(smoothed_label)
                     index_list.append(index)
                     ttc_list.append(ttc)
-                return frame_list, label_list, index_list, ttc_list
+                extra_info = {"ttc": ttc_list, "smoothed_labels": smoothed_label_list}
+                return frame_list, label_list, index_list, extra_info
             else:
                 buffer = self._aug_frame(buffer, args)
-
-            return buffer, self.label_array[index], index, self.ttc[index]
+            extra_info = {"ttc": self.ttc[index], "smoothed_labels": self._smoothed_label_array[index]}
+            return buffer, self.label_array[index], index, extra_info
 
         elif self.mode == 'validation':
             sample = self.dataset_samples[index]
-            buffer, _, __ = self.load_images(sample, final_resize=True)
+            buffer, _, __ = self.load_images_zip(sample, final_resize=True)
             if len(buffer) == 0:
                 while len(buffer) == 0:
                     warnings.warn("video {} not correctly loaded during validation".format(sample))
                     index = np.random.randint(self.__len__())
                     sample = self.dataset_samples[index]
-                    buffer, _, __ = self.load_images(sample, final_resize=True)
+                    buffer, _, __ = self.load_images_zip(sample, final_resize=True)
             buffer = self.data_transform(buffer)
-            return buffer, self.label_array[index], index, self.ttc[index]
+            extra_info = {"ttc": self.ttc[index], "smoothed_labels": self._smoothed_label_array[index]}
+            return buffer, self.label_array[index], index, extra_info
 
         elif self.mode == 'test':
             sample = self.test_dataset[index]
-            buffer, clip_name, frame_name = self.load_images(sample, final_resize=True)
+            buffer, clip_name, frame_name = self.load_images_zip(sample, final_resize=True)
             while len(buffer) == 0:
                 warnings.warn("video {} not found during testing".format(str(self.test_dataset[index])))
                 index = np.random.randint(self.__len__())
                 sample = self.test_dataset[index]
-                buffer, clip_name, frame_name = self.load_images(sample, final_resize=True)
+                buffer, clip_name, frame_name = self.load_images_zip(sample, final_resize=True)
             buffer = self.data_transform(buffer)
-            extra_info = {"ttc": self.ttc[index], "clip": clip_name, "frame": frame_name}
+            extra_info = {"ttc": self.ttc[index], "clip": clip_name, "frame": frame_name,
+                          "smoothed_labels": self._smoothed_label_array[index]}
             return buffer, self.test_label_array[index], index, extra_info
         else:
             raise NameError('mode {} unkown'.format(self.mode))
@@ -292,7 +317,7 @@ class FrameClsDataset_DADA(Dataset):
         filenames = [f"{subclip}_frame_{ts}.jpg" for ts in timesteps]
         view = []
         for fname in filenames:
-            img = cv2.imread(os.path.join(self.data_path, "rgb_videos", clip_name, fname))
+            img = cv2.imread(os.path.join(self.data_path, "frames", clip_name, fname))
             if img is None:
                 print("Image doesn't exist! ", fname)
                 exit(1)
@@ -310,11 +335,11 @@ class FrameClsDataset_DADA(Dataset):
         #view = np.stack(view, axis=0)
         return view, clip_name, filenames[-1]
 
-    def load_images_zip(self, dataset_sample, final_resize=False, resize_scale=None):
+    def load_images_zip(self, dataset_sample, final_resize=False, resize_scale=None, img_ext=".png"):
         clip_id, frame_seq = dataset_sample
         clip_name = self.clip_names[clip_id]
         timesteps = [self.clip_timesteps[clip_id][idx] for idx in frame_seq]
-        filenames = [f"{str(ts).zfill(6)}.jpg" for ts in timesteps]
+        filenames = [f"{str(ts).zfill(4)}{img_ext}" for ts in timesteps]
         view = []
         with zipfile.ZipFile(os.path.join(self.data_path, "frames", clip_name, "images.zip"), 'r') as zipf:
             for fname in filenames:
@@ -438,5 +463,3 @@ def tensor_normalize(tensor, mean, std):
     tensor = tensor / std
     return tensor
 
-
-dset = FrameClsDataset_DADA(anno_path="annotation/training.txt", data_path="/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000")

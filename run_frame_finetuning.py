@@ -55,7 +55,7 @@ def get_args():
 
     # Optimizer parameters
     parser.add_argument('--loss', default='crossentropy',
-                        choices=['crossentropy', 'focal', 'focal6x100', 'focal2_6', 'focal2_2', 'smoothap', 'exponential1'],
+                        choices=['crossentropy', 'focal', 'focal6x100', 'focal2_6', 'focal2_2', 'smoothap', 'exponential1', "2bce"],
                         type=str, help='dataset')
     parser.add_argument('--opt', default='adamw', type=str, metavar='OPTIMIZER',
                         help='Optimizer (default: "adamw"')
@@ -102,8 +102,8 @@ def get_args():
     # Evaluation parameters
     parser.add_argument('--crop_pct', type=float, default=None)
     parser.add_argument('--short_side_size', type=int, default=224)
-    parser.add_argument('--test_num_segment', type=int, default=5)
-    parser.add_argument('--test_num_crop', type=int, default=3)
+    parser.add_argument('--test_num_segment', type=int, default=1)
+    parser.add_argument('--test_num_crop', type=int, default=1)
     
     # Random Erase params
     parser.add_argument('--reprob', type=float, default=0.25, metavar='PCT',
@@ -151,8 +151,8 @@ def get_args():
     parser.add_argument('--num_segments', type=int, default= 1)
     parser.add_argument('--num_frames', type=int, default= 16)
     parser.add_argument('--sampling_rate', type=int, default=4)
-    parser.add_argument('--view_fps', type=int, default=10)  # DoTA, DADA1k only!
-    parser.add_argument('--data_set', default='Kinetics-400', choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51','DoTA', 'DADA1k','image_folder'],
+    parser.add_argument('--view_fps', type=int, default=10)  # DoTA, DADA2k only!
+    parser.add_argument('--data_set', default='Kinetics-400', choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51','DoTA', 'DADA2k','image_folder'],
                         type=str, help='dataset')
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
@@ -254,6 +254,9 @@ def main(args, ds_init):
     else:
         dataset_val, _ = build_frame_dataset(is_train=False, test_mode=False, args=args)
     dataset_test, _ = build_frame_dataset(is_train=False, test_mode=True, args=args)
+
+    print(f"dset lengths: train {len(dataset_train) if dataset_train is not None else '<not used>'}, "
+          f"val {len(dataset_val) if dataset_train is not None else '<not used>'}")
 
     if args.dist_eval:
         if len(dataset_val) % num_tasks != 0:
@@ -493,6 +496,8 @@ def main(args, ds_init):
         criterion = utils.FocalLoss2(gamma=6, multiplier=50)
     elif args.loss == "focal2_2":
         criterion = utils.FocalLoss2(gamma=2, multiplier=10)
+    elif args.loss == "2bce":
+        criterion = utils.DoubleBCELoss()
     elif args.loss == "smoothap":
         criterion = utils.SmoothAPLoss()
     elif args.loss == "exponential1":

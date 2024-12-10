@@ -8,7 +8,10 @@ import cv2
 import torch
 from PIL import Image
 import matplotlib.pyplot as plt
+import matplotlib.ticker as plticker
+import matplotlib.gridspec as gridspec
 from natsort import natsorted
+from tqdm import tqdm
 
 
 colors = {
@@ -24,6 +27,8 @@ colors = {
     'brown_grid': '#5c2b0a',
     'black': 'k',
 }
+
+FPS = 10
 
 
 class VisFrameConstructor():
@@ -42,10 +47,10 @@ class VisFrameConstructor():
     curr_lw = 3
     risk_threshold = 0.5
 
-    def init_plot_data(self, preds, labels):
-        timeframes = list(range(len(preds)))
+    def init_plot_data(self, preds, labels, empty_start=0):
+        timeframes = [(item+empty_start)/FPS for item in list(range(len(preds)))]
 
-        preds = [p[-1] for p in preds]
+        #preds = [p[-1] for p in preds]
         subplots_data = [
             {
                 "subplot_name": "Risk",
@@ -63,22 +68,23 @@ class VisFrameConstructor():
 
         if preds is not None:
             subplots_data[0]["data_items"].append({"x": timeframes, "y": preds, "label": "probs",
-                                              "color": "blue_p", "labels_color": "blue_p", "threshold_areas": True})
+                                              "color": colors["blue_p"], "labels_color": colors["red_l"], "threshold_areas": True})
         if labels is not None:
-            subplots_data[0]["data_items"].append({"x": timeframes, "y": preds, "label": "gt labels",
-                                                   "color": "black", "labels_color": "black", "threshold_areas": True})
+            subplots_data[0]["data_items"].append({"x": timeframes, "y": labels, "label": "gt labels",
+                                                   "color": colors["black"], "labels_color": colors["black"], "threshold_areas": True})
             unsafe = np.array(labels).astype(bool)
             for sd in subplots_data:
                 sd["fill_between"] = {"x": timeframes, "where": unsafe, "color": colors["red_l"]}
 
         self.subplots_data = subplots_data
+        self.video_title = ""
 
     def get_frame(self, image_clip, cur_image, curr_frame=None, curr_probs=None, curr_label=None):
         im_h, im_w, _ = image_clip.shape
         fh_vid = self.fw * im_h / im_w
-        fh_cur = 0.5 * self.fw * im_h / im_w
+        fh_cur = 2 * self.fw * im_h / im_w
         nrows = len(self.subplots_data)
-        fh = self.fh_base * nrows + self.fh_add + fh_vid
+        fh = self.fh_base * nrows + self.fh_add + fh_vid + fh_cur
         scale = (im_w + self.border_pixels) / self.fw
 
         plt.rcParams['figure.dpi'] = 100
@@ -89,19 +95,27 @@ class VisFrameConstructor():
         height_ratios = [fh_vid * 1.1, fh_cur * 1.1]
         height_ratios.extend([self.fh_base for _ in range(nrows)])
 
-        fig, axes = plt.subplots(nrows + 2, 1, figsize=figsize, height_ratios=height_ratios, sharex=False,
-                                 constrained_layout=True)
+        fig = plt.figure(constrained_layout=True, figsize=figsize)
+        gs = fig.add_gridspec(nrows + 2, 3, height_ratios=height_ratios, width_ratios=[0.25, 0.5, 0.25])
+
+        # fig, axes = plt.subplots(nrows + 2, 1, figsize=figsize, height_ratios=height_ratios, sharex=False,
+        #                          constrained_layout=True)
+        axes = []
+        vid_ax = fig.add_subplot(gs[0, :])
+        middle_left = fig.add_subplot(gs[1, 0])
+        middle_left.axis('off')
+        cur_frame_ax = fig.add_subplot(gs[1, 1])
+        middle_right = fig.add_subplot(gs[1, 2])
+        middle_right.axis('off')
+        for i in range(nrows):
+            axes.append(fig.add_subplot(gs[2+i, :]))
 
         extra = ""
         fig.suptitle(
-            self.video_title + f"\n{extra}T: {curr_frame}, P: {round(curr_probs, 2)}, L: {curr_label}",
+            self.video_title + f"\n{extra}T: {str(round(curr_frame, 1))}, P: {str(round(curr_probs, 3))}, L: {curr_label}",
             fontsize=self.highlighted_fsize
         )
-        fig.subplots_adjust(top=0.8)
-
-        vid_ax = axes[0]
-        cur_frame_ax = axes[1]
-        axes = axes[2:]
+        #fig.subplots_adjust(top=0.8)
 
         # Put image in the plot (imshow breaks resolution)
         vid_ax.pcolor(Image.fromarray(cv2.cvtColor(image_clip[::-1, :, :], cv2.COLOR_BGR2RGB)))
@@ -110,6 +124,8 @@ class VisFrameConstructor():
         cur_frame_ax.axis('off')
 
         for ax, sp_data in zip(axes, self.subplots_data):
+            ax.set_xlim(0, sp_data["data_items"][0]["x"][-1])
+            ax.set_ylim(-0.1, 1.1)
             for data_item in sp_data["data_items"]:
                 ax.plot(data_item["x"], data_item["y"], label=data_item["label"], color=data_item["color"],
                         linewidth=self.lw)
@@ -142,14 +158,17 @@ class VisFrameConstructor():
             ax.set_xlabel(sp_data["x_label"], fontsize=self.normal_fsize, weight='normal')
             ax.set_ylabel(sp_data["y_label"], fontsize=self.normal_fsize, weight='normal')
             ax.grid()
-            with warnings.catch_warnings(action="ignore"):
+            with warnings.catch_warnings():
                 ax.legend(loc="lower left")
+
         for i in range(1, len(axes)):
             axes[i].sharex(axes[0])
 
-        axes[0].set_xticklabels([])
+        #axes[0].set_xticklabels([])
+        loc = plticker.MultipleLocator(base=0.5)  # this locator puts ticks at regular intervals
+        axes[0].xaxis.set_major_locator(loc)
 
-        with warnings.catch_warnings(action="ignore"):
+        with warnings.catch_warnings():
             plt.legend()
         fig.canvas.draw()
         img = np.array(fig.canvas.renderer.buffer_rgba())
@@ -167,8 +186,6 @@ class VisFrameConstructor():
             data_id = batch_seq_fnames["data_id"][bi]
             last_filename = batch_seq_fnames["filenames"][-1][bi]  # ! nested list shape is (seq_len, batch) !
             out_name = self.out_vis_dir / f"{self.tag}{data_id}" / f"{Path(last_filename).stem}.jpg"
-            if save:
-                os.makedirs(out_name.parent, exist_ok=True)
 
             output_img = []
             img_mod = batch_inputs[self.camera_idx][bi]
@@ -193,14 +210,9 @@ class VisFrameConstructor():
             output_img = np.rint(np.vstack(output_img)).astype(np.uint8)
             output_img = cv2.cvtColor(output_img, cv2.COLOR_RGB2BGR)
 
-            if save:
-                cv2.imwrite(str(out_name), output_img)
-            else:
-                batch_vis.append(output_img)
-        if save:
-            return None
-        else:
-            return batch_vis
+            batch_vis.append(output_img)
+
+        return batch_vis
 
 
 def get_clip_data(clip_name, df):
@@ -208,9 +220,27 @@ def get_clip_data(clip_name, df):
     return clip_data
 
 
+def get_image_clip(images, cur_idx, seq_length, fps=FPS):
+    t = 4
+    step = round(seq_length / (t-1))
+    clip_ids = [round(cur_idx - step*i) + 1 for i in range(t-1, -1, -1)]
+    clip_ids[0] = cur_idx - seq_length + 1
+    clip_ids[-1] = cur_idx
+    image_clip = []
+    for cid in clip_ids:
+        if cid < 0:
+            img = np.zeros_like(images[cur_idx])
+        else:
+            img = images[cid]
+        image_clip.append(img)
+    image_clip = cv2.resize(np.hstack(image_clip), (0, 0), fx=0.5, fy=0.5)
+    return image_clip
+
+
 def save_video_dota(clip_dir, probs, labels, filenames, seq_length, out_path):
     # 1. Find unused labels in the beginning of the clip
     frames = []
+    all_filenames = []
     zip_file_path = os.path.join(clip_dir, "images.zip")
     with zipfile.ZipFile(zip_file_path, 'r') as archive:
         all_filenames = natsorted([img for img in archive.namelist() if img.endswith(".jpg")])
@@ -218,7 +248,7 @@ def save_video_dota(clip_dir, probs, labels, filenames, seq_length, out_path):
         assert natsorted(list(intersection)) == filenames
         # 2. Prepare plot template
         vis = VisFrameConstructor()
-        vis.init_plot_data(preds=probs, labels=labels)
+        vis.init_plot_data(preds=probs, labels=labels, empty_start=len(all_filenames) - len(filenames))
         # 2. Read all images and format them
         for fn in all_filenames:
             with archive.open(fn) as img_file:
@@ -227,43 +257,60 @@ def save_video_dota(clip_dir, probs, labels, filenames, seq_length, out_path):
                 img = cv2.resize(img, (0, 0), fx=0.4, fy=0.4, interpolation=cv2.INTER_CUBIC)
                 frames.append(img)
     # 3. Open the video stream, save frames and close the stream
-    writer = cv2.VideoWriter(
-        out_path,
-        cv2.VideoWriter_fourcc(*'MP4V'),
-        10.,
-        (frames[0].shape[1], frames[0].shape[0])
-    )
-    for frame in frames:
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    writer = None
+    for i, (fname, frame) in enumerate(tqdm(zip(all_filenames, frames), total=len(all_filenames), leave=False)):
+        if fname in filenames:
+            i_ = filenames.index(fname)
+        else:
+            i_ = None
+        clip_imgs = get_image_clip(images=frames, cur_idx=i, seq_length=seq_length)
         img = vis.get_frame(
-            image=frame,
-            curr_frame=current_timestep,
-            curr_probs=current_probs,
-            curr_label=current_label
+            image_clip=clip_imgs,
+            cur_image=frame,
+            curr_frame=i/FPS,
+            curr_probs=-1 if i_ is None else probs[i_],
+            curr_label=-1 if i_ is None else labels[i_]
         )
+        if writer is None:
+            writer = cv2.VideoWriter(
+                out_path,
+                cv2.VideoWriter_fourcc(*'MP4V'),
+                10.,
+                (img.shape[1], img.shape[0])
+            )
         writer.write(img)
+        #cv2.imwrite("/mnt/experiments/sorlova/AITHENA/NewStage/VideoMAE_results/auroc_behaviour_vis/crossentropy/checkpoint-15_OUT/debug.jpg", img)
     writer.release()
 
 
-predictions = "/home/sorlova/repos/NewStart/VideoMAE/logs/dota_fixloss/focal_1gpu/OUT_DoTA/predictions_0.csv"
-out_folder = "/home/sorlova/repos/NewStart/VideoMAE/logs/dota_fixloss/focal_1gpu/OUT_DoTA_newvids/"
+ckpt = 3
+tag = ""  # "_train
+version = "crossentropy"
+report_csv_clipnames = f"/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/{version}/checkpoint-{ckpt}/OUT{tag}_fixttc/err_report_bad0.5.csv"
+predictions = f"/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/{version}/checkpoint-{ckpt}/OUT{tag}_fixttc/predictions_0.csv"
+out_folder = f"/mnt/experiments/sorlova/AITHENA/NewStage/VideoMAE_results/auroc_behaviour_vis/{version}/checkpoint-{ckpt}_OUT{tag}"
 video_dir = "/mnt/experiments/sorlova/datasets/DoTA/frames"
 seq_length = 16
 
-df = pd.read_csv(predictions)
-clips = natsorted(pd.unique(df['clip']))
-random_clip_name = clips[0]
-clip_data = get_clip_data(random_clip_name, df)
+# ============
+clip_df = pd.read_csv(report_csv_clipnames)
+clip_names = clip_df["clip"]
+# DEBUG
+for clip_name in tqdm(clip_names):
+    df = pd.read_csv(predictions)
+    clip_data = get_clip_data(clip_name, df)
 
-logits = clip_data[["logits_safe", "logits_risk"]].values  # Shape (N, 2)
-logits_tensor = torch.tensor(logits, dtype=torch.float32)
-probabilities = torch.nn.functional.softmax(logits_tensor, dim=1).numpy()
+    logits = clip_data[["logits_safe", "logits_risk"]].values  # Shape (N, 2)
+    logits_tensor = torch.tensor(logits, dtype=torch.float32)
+    probabilities = torch.nn.functional.softmax(logits_tensor, dim=1).numpy()
 
-save_video_dota(
-    clip_dir=os.path.join(video_dir, random_clip_name),
-    probs=probabilities[:, 1],
-    labels=clip_data["label"].values,
-    filenames=clip_data["filename"].tolist(),
-    seq_length=seq_length,
-    out_path=os.path.join(out_folder, random_clip_name)
-)
+    save_video_dota(
+        clip_dir=os.path.join(video_dir, clip_name),
+        probs=probabilities[:, 1],
+        labels=clip_data["label"].values,
+        filenames=clip_data["filename"].tolist(),
+        seq_length=seq_length,
+        out_path=os.path.join(out_folder, clip_name + ".mp4")
+    )
 

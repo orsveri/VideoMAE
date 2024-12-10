@@ -5,19 +5,19 @@ import numpy as np
 import torch
 import pandas as pd
 import json
+from natsort import natsorted
 from PIL import Image
 from torchvision import transforms
+import warnings
+from torch.utils.data import Dataset
 
 from functional import crop_clip
 from random_erasing import RandomErasing
-import warnings
-from torch.utils.data import Dataset
 import video_transforms as video_transforms 
 import volume_transforms as volume_transforms
 
 from dataset.sequencing import RegularSequencer, UnsafeOverlapSequencer
-
-import numpy as np
+from dataset.data_utils import smooth_labels, compute_time_vector
 
 
 class FrameClsDataset(Dataset):
@@ -44,8 +44,8 @@ class FrameClsDataset(Dataset):
         self.test_num_segment = test_num_segment
         self.num_crop = num_crop
         self.test_num_crop = test_num_crop
-        self.ttc_TT = 1.
-        self.ttc_TA = 0.5
+        self.ttc_TT = args.ttc_TT if hasattr(args, "ttc_TT") else 2.
+        self.ttc_TA = args.ttc_TA if hasattr(args, "ttc_TA") else 1.
         self.args = args
         self.aug = False
         self.rand_erase = False
@@ -57,10 +57,15 @@ class FrameClsDataset(Dataset):
         self._read_anno()
         self._prepare_views()
         assert len(self.dataset_samples) > 0
-        assert len(self.label_array) > 0
+        assert len(self._label_array) > 0
 
-        count_safe = self.label_array.count(0)
-        count_risk = self.label_array.count(1)
+        if self.args.loss in ("2bce",):
+            self.label_array = self._smoothed_label_array
+        else:
+            self.label_array = self._label_array
+
+        count_safe = self._label_array.count(0)
+        count_risk = self._label_array.count(1)
         print(f"\n\n===\n[{mode}] | COUNT safe: {count_safe}\nCOUNT risk: {count_risk}\n===")
 
         if (mode == 'train'):
@@ -92,6 +97,8 @@ class FrameClsDataset(Dataset):
         clip_cat_labels = []
         clip_ego = []
         clip_night = []
+        clip_ttc = []
+        clip_smoothed_labels = []
 
         with open(os.path.join(self.data_path, "dataset", self.anno_path), 'r') as file:
             clip_names = [line.rstrip() for line in file]
@@ -99,31 +106,39 @@ class FrameClsDataset(Dataset):
             clip_anno_path = os.path.join(self.data_path, "dataset", "annotations", f"{clip}.json")
             with open(clip_anno_path) as f:
                 anno = json.load(f)
-                timesteps = [int(os.path.splitext(os.path.basename(frame_label["image_path"]))[0]) for frame_label
-                                  in anno["labels"]]
+                # sort is not required since we read already sorted timesteps from annotations
+                timesteps = natsorted([int(os.path.splitext(os.path.basename(frame_label["image_path"]))[0]) for frame_label
+                                  in anno["labels"]])
                 cat_labels = [int(frame_label["accident_id"]) for frame_label in anno["labels"]]
-                binary_labels = [1 if l > 0 else 0  for l in cat_labels]
                 if_ego = anno["ego_involve"]
                 if_night = anno["night"]
-                clip_timesteps.append(timesteps)
-                clip_binary_labels.append(binary_labels)
-                clip_cat_labels.append(cat_labels)
-                clip_ego.append(if_ego)
-                clip_night.append(if_night)
+            binary_labels = [1 if l > 0 else 0 for l in cat_labels]
+            ttc = compute_time_vector(binary_labels, fps=self.orig_fps, TT=self.ttc_TT, TA=self.ttc_TA)
+            smoothed_labels = smooth_labels(labels=torch.Tensor(binary_labels), time_vector=ttc, before_limit=self.ttc_TT, after_limit=self.ttc_TA)
+
+            clip_timesteps.append(timesteps)
+            clip_binary_labels.append(binary_labels)
+            clip_cat_labels.append(cat_labels)
+            clip_ego.append(if_ego)
+            clip_night.append(if_night)
+            clip_ttc.append(ttc)
+            clip_smoothed_labels.append(smoothed_labels)
 
         assert len(clip_names) == len(clip_timesteps) == len(clip_binary_labels) == len(clip_cat_labels)
         self.clip_names = clip_names
         self.clip_timesteps = clip_timesteps
         self.clip_bin_labels = clip_binary_labels
-        self.clip_ttc = [compute_time_vector(cbl, fps=self.orig_fps, TT=self.ttc_TT, TA=self.ttc_TA) for cbl in clip_binary_labels]
         self.clip_cat_labels = clip_cat_labels
         self.clip_ego = clip_ego
         self.clip_night = clip_night
+        self.clip_ttc = clip_ttc
+        self.clip_smoothed_labels = clip_smoothed_labels
 
     def _prepare_views(self):
         dataset_sequences = []
         label_array = []
         ttc = []
+        smoothed_label_array = []
         sequencer = RegularSequencer(seq_frequency=self.target_fps, seq_length=self.view_len, step=self.view_step)
         N = len(self.clip_names)
         for i in range(N):
@@ -133,12 +148,75 @@ class FrameClsDataset(Dataset):
                 continue
             dataset_sequences.extend([(i, seq) for seq in sequences])
             label_array.extend([self.clip_bin_labels[i][seq[-1]] for seq in sequences])
+            smoothed_label_array.extend([self.clip_smoothed_labels[i][seq[-1]] for seq in sequences])
             ttc.extend([self.clip_ttc[i][seq[-1]] for seq in sequences])
         self.dataset_samples = dataset_sequences
-        self.label_array = label_array
+        self._label_array = label_array
         self.ttc = ttc
+        self._smoothed_label_array = smoothed_label_array
+
+    # # original version
+    # def __getitem__(self, index):
+    #
+    #     if self.mode == 'train':
+    #         args = self.args
+    #         sample = self.dataset_samples[index]
+    #         buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)  # T H W C
+    #         if len(buffer) == 0:
+    #             while len(buffer) == 0:
+    #                 warnings.warn("video {} not correctly loaded during training".format(sample))
+    #                 index = np.random.randint(self.__len__())
+    #                 sample = self.dataset_samples[index]
+    #                 buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)
+    #
+    #         if args.num_sample > 1:
+    #             frame_list = []
+    #             label_list = []
+    #             index_list = []
+    #             ttc_list = []
+    #             for _ in range(args.num_sample):
+    #                 new_frames = self._aug_frame(buffer, args)
+    #                 label = self.label_array[index]
+    #                 ttc = self.ttc[index]
+    #                 frame_list.append(new_frames)
+    #                 label_list.append(label)
+    #                 index_list.append(index)
+    #                 ttc_list.append(ttc)
+    #             return frame_list, label_list, index_list, ttc_list
+    #         else:
+    #             buffer = self._aug_frame(buffer, args)
+    #
+    #         return buffer, self.label_array[index], index, self.ttc[index]
+    #
+    #     elif self.mode == 'validation':
+    #         sample = self.dataset_samples[index]
+    #         buffer, _, __ = self.load_images(sample, final_resize=True)
+    #         if len(buffer) == 0:
+    #             while len(buffer) == 0:
+    #                 warnings.warn("video {} not correctly loaded during validation".format(sample))
+    #                 index = np.random.randint(self.__len__())
+    #                 sample = self.dataset_samples[index]
+    #                 buffer, _, __ = self.load_images(sample, final_resize=True)
+    #         buffer = self.data_transform(buffer)
+    #         return buffer, self.label_array[index], index, self.ttc[index]
+    #
+    #     elif self.mode == 'test':
+    #         sample = self.test_dataset[index]
+    #         buffer, clip_name, frame_name = self.load_images(sample, final_resize=True)
+    #         while len(buffer) == 0:
+    #             warnings.warn("video {} not found during testing".format(str(self.test_dataset[index])))
+    #             index = np.random.randint(self.__len__())
+    #             sample = self.test_dataset[index]
+    #             buffer, clip_name, frame_name = self.load_images(sample, final_resize=True)
+    #         buffer = self.data_transform(buffer)
+    #         extra_info = {"ttc": self.ttc[index], "clip": clip_name, "frame": frame_name}
+    #         return buffer, self.test_label_array[index], index, self.ttc[index]
+    #     else:
+    #         raise NameError('mode {} unkown'.format(self.mode))
+
 
     def __getitem__(self, index):
+
         if self.mode == 'train':
             args = self.args
             sample = self.dataset_samples[index]
@@ -153,21 +231,25 @@ class FrameClsDataset(Dataset):
             if args.num_sample > 1:
                 frame_list = []
                 label_list = []
+                smoothed_label_list = []
                 index_list = []
                 ttc_list = []
                 for _ in range(args.num_sample):
                     new_frames = self._aug_frame(buffer, args)
-                    label = self.label_array[index]
+                    label = self._label_array[index]
+                    smoothed_label = self._smoothed_label_array[index]
                     ttc = self.ttc[index]
                     frame_list.append(new_frames)
                     label_list.append(label)
+                    smoothed_label_list.append(smoothed_label)
                     index_list.append(index)
                     ttc_list.append(ttc)
-                return frame_list, label_list, index_list, ttc_list
+                extra_info = {"ttc": ttc_list, "smoothed_labels": smoothed_label_list}
+                return frame_list, label_list, index_list, extra_info
             else:
                 buffer = self._aug_frame(buffer, args)
-
-            return buffer, self.label_array[index], index, self.ttc[index]
+            extra_info = {"ttc": self.ttc[index], "smoothed_labels": self._smoothed_label_array[index]}
+            return buffer, self._label_array[index], index, extra_info
 
         elif self.mode == 'validation':
             sample = self.dataset_samples[index]
@@ -179,7 +261,8 @@ class FrameClsDataset(Dataset):
                     sample = self.dataset_samples[index]
                     buffer, _, __ = self.load_images(sample, final_resize=True)
             buffer = self.data_transform(buffer)
-            return buffer, self.label_array[index], index, self.ttc[index]
+            extra_info = {"ttc": self.ttc[index], "smoothed_labels": self._smoothed_label_array[index]}
+            return buffer,self._label_array[index], index, extra_info
 
         elif self.mode == 'test':
             sample = self.test_dataset[index]
@@ -190,10 +273,11 @@ class FrameClsDataset(Dataset):
                 sample = self.test_dataset[index]
                 buffer, clip_name, frame_name = self.load_images(sample, final_resize=True)
             buffer = self.data_transform(buffer)
-            extra_info = {"ttc": self.ttc[index], "clip": clip_name, "frame": frame_name}
-            return buffer, self.test_label_array[index], index, extra_info
+            extra_info = {"ttc": self.ttc[index], "clip": clip_name, "frame": frame_name, "smoothed_labels": self._smoothed_label_array[index]}
+            return buffer, self._label_array[index], index, extra_info
         else:
             raise NameError('mode {} unkown'.format(self.mode))
+
 
     def _aug_frame(
         self,
@@ -290,6 +374,7 @@ class FrameClsDataset(Dataset):
                 else:
                     raise ValueError
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.uint8)
+
                 view.append(img)
         #view = np.stack(view, axis=0)
         return view, clip_name, filenames[-1]
@@ -301,58 +386,77 @@ class FrameClsDataset(Dataset):
             return len(self.test_dataset)
 
 
-# before 1/(1+exp(-6*(x+1))), after 1/(1+exp(-12*(-x+0.5)))
-def compute_time_vector(labels, fps, TT=2, TA=1):
-    """
-    Compute time vector reflecting time in seconds before or after anomaly range.
-
-    Parameters:
-        labels (list or np.ndarray): Binary vector of frame labels (1 for anomalous, 0 otherwise).
-        fps (int): Frames per second of the video.
-        TT (float): Time-to-anomalous range in seconds (priority).
-        TA (float): Time-after-anomalous range in seconds.
-
-    Returns:
-        np.ndarray: Time vector for each frame.
-    """
-    num_frames = len(labels)
-    labels = np.array(labels)
-    default_value = max(TT, TA) * 2
-    time_vector = np.zeros(num_frames, dtype=float)
-
-    # Get anomaly start and end indices
-    anomaly_indices = np.where(labels == 1)[0]
-    if len(anomaly_indices) == 0:
-        return time_vector  # No anomalies, return all zeros
-
-    # Define maximum frame thresholds for TT and TA
-    TT_frames = int(TT * fps)
-    TA_frames = int(TA * fps)
-
-    # Iterate through each frame
-    for i in range(num_frames):
-        if labels[i] == 1:
-            time_vector[i] = 0  # Anomalous frame, set to 0
-        else:
-            # Find distances to the start and end of anomaly ranges
-            distances_to_anomalies = anomaly_indices - i
-
-            # Time-to-closest-anomaly-range (TT priority)
-            closest_to_anomaly = distances_to_anomalies[distances_to_anomalies > 0]  # After the frame
-            if len(closest_to_anomaly) > 0 and closest_to_anomaly[0] <= TT_frames:
-                time_vector[i] = -closest_to_anomaly[0] / fps
-                continue
-
-            # Time-after-anomaly-range (TA range)
-            closest_after_anomaly = distances_to_anomalies[distances_to_anomalies < 0]  # Before the frame
-            if len(closest_after_anomaly) > 0 and abs(closest_after_anomaly[-1]) <= TA_frames:
-                time_vector[i] = -closest_after_anomaly[-1] / fps
-                continue
-
-            # Outside both TT and TA
-            time_vector[i] = -100.
-
-    return time_vector
+# # before 1/(1+exp(-6*(x+1))), after 1/(1+exp(-12*(-x+0.5)))
+# def compute_time_vector(labels, fps, TT=2, TA=1):
+#     """
+#     Compute time vector reflecting time in seconds before or after anomaly range.
+#
+#     Parameters:
+#         labels (list or np.ndarray): Binary vector of frame labels (1 for anomalous, 0 otherwise).
+#         fps (int): Frames per second of the video.
+#         TT (float): Time-to-anomalous range in seconds (priority).
+#         TA (float): Time-after-anomalous range in seconds.
+#
+#     Returns:
+#         np.ndarray: Time vector for each frame.
+#     """
+#     num_frames = len(labels)
+#     labels = np.array(labels)
+#     default_value = max(TT, TA) * 2
+#     time_vector = torch.zeros(num_frames, dtype=float)
+#
+#     # Get anomaly start and end indices
+#     anomaly_indices = np.where(labels == 1)[0]
+#     if len(anomaly_indices) == 0:
+#         return time_vector  # No anomalies, return all zeros
+#
+#     # Define maximum frame thresholds for TT and TA
+#     TT_frames = int(TT * fps)
+#     TA_frames = int(TA * fps)
+#
+#     # Iterate through each frame
+#     for i in range(num_frames):
+#         if labels[i] == 1:
+#             time_vector[i] = 0  # Anomalous frame, set to 0
+#         else:
+#             # Find distances to the start and end of anomaly ranges
+#             distances_to_anomalies = anomaly_indices - i
+#
+#             # Time-to-closest-anomaly-range (TT priority)
+#             closest_to_anomaly = distances_to_anomalies[distances_to_anomalies > 0]  # After the frame
+#             if len(closest_to_anomaly) > 0 and closest_to_anomaly[0] <= TT_frames:
+#                 time_vector[i] = -closest_to_anomaly[0] / fps
+#                 continue
+#
+#             # Time-after-anomaly-range (TA range)
+#             closest_after_anomaly = distances_to_anomalies[distances_to_anomalies < 0]  # Before the frame
+#             if len(closest_after_anomaly) > 0 and abs(closest_after_anomaly[-1]) <= TA_frames:
+#                 time_vector[i] = -closest_after_anomaly[-1] / fps
+#                 continue
+#
+#             # Outside both TT and TA
+#             time_vector[i] = -100.
+#
+#     return time_vector
+#
+#
+# def smooth_labels(labels, time_vector, before_limit=2, after_limit=1):
+#     xb = before_limit / 2
+#     xa = after_limit / 2
+#     kb = 12 / before_limit # 6 for before_limit=2
+#     ka = 12 / after_limit # 12 for after_limit=1
+#     sigmoid_before = lambda x: (1 / (1 + torch.exp(-kb * (x + xb)))).float()
+#     sigmoid_after = lambda x: (1 / (1 + torch.exp(-ka * (-x + xa)))).float()
+#
+#     before_mask = (time_vector >= -before_limit) & (time_vector < 0)
+#     after_mask = (time_vector > 0) & (time_vector <= after_limit)
+#
+#     target_anomaly = (labels == 1).float()
+#     target_anomaly[before_mask] = sigmoid_before(time_vector[before_mask])
+#     target_anomaly[after_mask] = sigmoid_after(time_vector[after_mask])
+#     target_safe = 1 - target_anomaly
+#     smoothed_target = torch.stack((target_safe, target_anomaly), dim=-1)
+#     return smoothed_target
 
 
 def spatial_sampling(

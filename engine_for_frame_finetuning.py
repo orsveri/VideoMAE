@@ -44,7 +44,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     device: torch.device, epoch: int, loss_scaler, max_norm: float = 0,
                     model_ema: Optional[ModelEma] = None, mixup_fn: Optional[Mixup] = None, log_writer=None,
                     start_steps=None, lr_schedule_values=None, wd_schedule_values=None,
-                    num_training_steps_per_epoch=None, update_freq=None, with_ttc=False):
+                    num_training_steps_per_epoch=None, update_freq=None, with_ttc=False, smoothed_labels_for_loss=False):
     model.train(True)
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
@@ -69,7 +69,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     labels = []
     if_dist = dist.is_initialized()
 
-    for data_iter_step, (samples, targets, _, ttc) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for data_iter_step, (samples, targets, _, extra_info) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         gc.collect()  # Run garbage collection to clear unused memory
         torch.cuda.empty_cache()  # Free up CUDA memory
 
@@ -89,7 +89,16 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         labels.append(targets.detach().to(device, non_blocking=True) if if_dist else targets.detach().cpu())  # !!
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
+        print("extra info")
+        print("type", type(extra_info))
+        print(extra_info)
+        labels = extra_info["smoothed_labels"]
+        if smoothed_labels_for_loss:
+            targets_loss = labels.to(device, non_blocking=True)
+        else:
+            targets_loss = targets
         if with_ttc:
+            ttc = extra_info["ttc"]
             ttc = ttc.to(device, non_blocking=True)
 
         if mixup_fn is not None:
@@ -99,20 +108,20 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             samples = samples.half()
             if with_ttc:
                 loss, output = train_class_batch_ttc(
-                    model, samples, targets, ttc, criterion)
+                    model, samples, targets_loss, ttc, criterion)
             else:
                 loss, output = train_class_batch(
-                    model, samples, targets, criterion)
+                    model, samples, targets_loss, criterion)
             # collect predictions
             preds.append(output.detach() if if_dist else output.detach().cpu())   # !!
         else:
             with torch.cuda.amp.autocast():
                 if with_ttc:
                     loss, output = train_class_batch_ttc(
-                        model, samples, targets, ttc, criterion)
+                        model, samples, targets_loss, ttc, criterion)
                 else:
                     loss, output = train_class_batch(
-                        model, samples, targets, criterion)
+                        model, samples, targets_loss, criterion)
             # collect predictions
             preds.append(output.detach() if if_dist else output.detach().cpu())    # !!
 
@@ -228,7 +237,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
 
 @torch.no_grad()
-def validation_one_epoch(data_loader, model, device, with_ttc=False):
+def validation_one_epoch(data_loader, model, device, with_ttc=False, smoothed_labels_for_loss=False):
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -243,19 +252,23 @@ def validation_one_epoch(data_loader, model, device, with_ttc=False):
     for batch in metric_logger.log_every(data_loader, 10, header):
         videos = batch[0]
         target = batch[1]
-        ttc = batch[3] if with_ttc else None
+        ttc = batch[3]["ttc"] if with_ttc else None
         videos = videos.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
         if with_ttc:
             ttc = ttc.to(device, non_blocking=True)
+        if smoothed_labels_for_loss:
+            targets_loss = batch[3]["smoothed_labels"].to(device, non_blocking=True)
+        else:
+            targets_loss = target
 
         # compute output
         with torch.cuda.amp.autocast():
             output = model(videos)
             if with_ttc:
-                loss = criterion(output, target, ttc)
+                loss = criterion(output, targets_loss, ttc)
             else:
-                loss = criterion(output, target)
+                loss = criterion(output, targets_loss)
 
         # collect predictions
         preds.append(output.detach() if dist.is_initialized() else output.cpu().detach())
@@ -306,7 +319,7 @@ def validation_one_epoch(data_loader, model, device, with_ttc=False):
 
 
 @torch.no_grad()
-def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
+def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False, smoothed_labels_for_loss=False):
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -342,13 +355,18 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False):
         if with_ttc:
             ttc = ttc.to(device, non_blocking=True)
 
+        if smoothed_labels_for_loss:
+            targets_loss = extra_info["smoothed_labels"].to(device, non_blocking=True)
+        else:
+            targets_loss = target
+
         # compute output
         with torch.cuda.amp.autocast():
             output = model(videos)
             if with_ttc:
-                loss = criterion(output, target, ttc)
+                loss = criterion(output, targets_loss, ttc)
             else:
-                loss = criterion(output, target)
+                loss = criterion(output, targets_loss)
 
         for i in range(output.size(0)):
             string = f"{ids[i]} {output.data[i].cpu().numpy().tolist()} {int(target[i].cpu().numpy())}\n"
