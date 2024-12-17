@@ -237,15 +237,15 @@ def get_image_clip(images, cur_idx, seq_length, fps=FPS):
     return image_clip
 
 
-def save_video_dota(clip_dir, probs, labels, filenames, seq_length, out_path):
+def save_video_dota(clip_dir, probs, labels, filenames, seq_length, out_path, img_ext = ".jpg"):
     # 1. Find unused labels in the beginning of the clip
     frames = []
     all_filenames = []
     zip_file_path = os.path.join(clip_dir, "images.zip")
     with zipfile.ZipFile(zip_file_path, 'r') as archive:
-        all_filenames = natsorted([img for img in archive.namelist() if img.endswith(".jpg")])
+        all_filenames = natsorted([img for img in archive.namelist() if img.endswith(img_ext)])
         intersection = set(all_filenames).intersection(set(filenames))
-        assert natsorted(list(intersection)) == filenames
+        assert natsorted(list(intersection)) == filenames, f"len filenames: {len(intersection)}, len intersection {len(filenames)}"
         # 2. Prepare plot template
         vis = VisFrameConstructor()
         vis.init_plot_data(preds=probs, labels=labels, empty_start=len(all_filenames) - len(filenames))
@@ -287,10 +287,10 @@ def save_video_dota(clip_dir, probs, labels, filenames, seq_length, out_path):
 ckpt = 3
 tag = ""  # "_train
 version = "crossentropy"
-report_csv_clipnames = f"/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/{version}/checkpoint-{ckpt}/OUT{tag}_fixttc/err_report_bad0.5.csv"
-predictions = f"/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/{version}/checkpoint-{ckpt}/OUT{tag}_fixttc/predictions_0.csv"
-out_folder = f"/mnt/experiments/sorlova/AITHENA/NewStage/VideoMAE_results/auroc_behaviour_vis/{version}/checkpoint-{ckpt}_OUT{tag}"
-video_dir = "/mnt/experiments/sorlova/datasets/DoTA/frames"
+report_csv_clipnames = f"/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/{version}/checkpoint-{ckpt}/OUT_DADA2k{tag}_fixttc/err_report_bad0.5.csv"
+predictions = f"/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/{version}/checkpoint-{ckpt}/OUT_DADA2k{tag}_fixttc/predictions_0.csv"
+out_folder = f"/mnt/experiments/sorlova/AITHENA/NewStage/VideoMAE_results/auroc_behaviour_vis/{version}/checkpoint-{ckpt}_OUT_DADA2k{tag}"
+video_dir = "/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000/frames" # "/mnt/experiments/sorlova/datasets/DoTA/frames"
 seq_length = 16
 
 # ============
@@ -311,6 +311,7 @@ for clip_name in tqdm(clip_names):
         labels=clip_data["label"].values,
         filenames=clip_data["filename"].tolist(),
         seq_length=seq_length,
-        out_path=os.path.join(out_folder, clip_name + ".mp4")
+        out_path=os.path.join(out_folder, clip_name + ".mp4"),
+        img_ext=".png"
     )
 

@@ -1,9 +1,9 @@
 # Set the path to save checkpoints
-OUTPUT_DIR='logs/dota/from_k400_vits_debug/'
+OUTPUT_DIR='logs/auroc_behavior/crossentropy/checkpoint-3/delete'
 # path to Kinetics set (train.csv/val.csv/test.csv)
 DATA_PATH='/mnt/experiments/sorlova/datasets/DoTA'
 # path to pretrain model
-MODEL_PATH='logs/dota/from_k400_vits_debug/checkpoint-best/mp_rank_00_model_states.pt'
+MODEL_PATH='logs/auroc_behavior/crossentropy/checkpoint-3/mp_rank_00_model_states.pt'
 
 # We add repeated_aug (--num_sample = 2) on Kinetics-400 here, 
 # which could better performance while need more time for fine-tuning
@@ -16,6 +16,7 @@ OMP_NUM_THREADS=1 torchrun --nproc_per_node=1 \
     --master_port 12340 \
     run_frame_finetuning.py \
     --eval \
+    --num_workers 4 \
     --model vit_small_patch16_224 \
     --data_set DoTA \
     --nb_classes 2 \
@@ -23,7 +24,7 @@ OMP_NUM_THREADS=1 torchrun --nproc_per_node=1 \
     --finetune ${MODEL_PATH} \
     --log_dir ${OUTPUT_DIR} \
     --output_dir ${OUTPUT_DIR} \
-    --batch_size 32 \
+    --batch_size 256 \
     --num_sample 2 \
     --input_size 224 \
     --short_side_size 224 \

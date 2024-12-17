@@ -1,5 +1,5 @@
 # Set the path to save checkpoints
-OUTPUT_DIR='logs/dota_fixloss/crossentr_vits_4gpu/'
+OUTPUT_DIR='logs/auroc_behavior/focal_4gpu'
 # path to Kinetics set (train.csv/val.csv/test.csv)
 DATA_PATH='/mnt/experiments/sorlova/datasets/DoTA'
 # path to pretrain model
@@ -11,11 +11,12 @@ MODEL_PATH='logs/pretrained/k400_vits/checkpoint.pth'
 # nproc_per_node is the number of used GPUs
 # batch_size is set for one GPU
 # batch_size=16, nproc_per_node=2 => the effective batch_size is 32
-OMP_NUM_THREADS=1 torchrun --nproc_per_node=1 \
-    --master_port 12320 \
+OMP_NUM_THREADS=1 torchrun --nproc_per_node=2 \
+    --master_port 12340 \
     run_frame_finetuning.py \
     --model vit_small_patch16_224 \
     --data_set DoTA \
+    --loss focal \
     --nb_classes 2 \
     --data_path ${DATA_PATH} \
     --finetune ${MODEL_PATH} \
@@ -34,8 +35,9 @@ OMP_NUM_THREADS=1 torchrun --nproc_per_node=1 \
     --weight_decay 0.05 \
     --drop_path 0.2 \
     --layer_decay 0.7 \
-    --epochs 150 \
+    --epochs 20 \
     --test_num_segment 1 \
     --test_num_crop 1 \
     --dist_eval \
-    --enable_deepspeed 
+    --enable_deepspeed \
+    --seed 365

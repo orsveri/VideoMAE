@@ -136,9 +136,8 @@ def get_args():
     parser.add_argument('--init_scale', default=0.001, type=float)
     parser.add_argument('--use_checkpoint', action='store_true')
     parser.set_defaults(use_checkpoint=False)
-    parser.add_argument('--use_mean_pooling', action='store_true')
-    parser.set_defaults(use_mean_pooling=True)
-    parser.add_argument('--use_cls', action='store_false', dest='use_mean_pooling')
+    parser.add_argument('--final_reduction', default='fc_norm', choices=['fc_norm', 'cls', 'none'],
+                        type=str, help='type of reduction at the end of ViT encoder. cls: only CLS token, fc_norm: mean pooling, none: no reduction')
 
     # Dataset parameters
     parser.add_argument('--data_path', default='/path/to/list_kinetics-400', type=str,
@@ -328,7 +327,7 @@ def main(args, ds_init):
         attn_drop_rate=args.attn_drop_rate,
         drop_block_rate=None,
         use_checkpoint=args.use_checkpoint,
-        use_mean_pooling=args.use_mean_pooling,
+        final_reduction=args.final_reduction,
         init_scale=args.init_scale,
     )
 

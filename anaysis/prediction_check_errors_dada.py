@@ -6,6 +6,8 @@ from scipy.ndimage import label
 from torch.nn.functional import softmax
 from natsort import natsorted
 
+from dada import FrameClsDataset_DADA
+
 
 def get_pos_and_neg_probs():
     logits = torch.tensor(df[["logits_safe", "logits_risk"]].to_numpy())
@@ -30,7 +32,7 @@ prediction_clipped = torch.clamp(prediction, epsilon, 1.0)
 bce_loss_builtin = torch.nn.functional.binary_cross_entropy(prediction_clipped, target)
 print(f"Binary Cross-Entropy Loss (Builtin): {bce_loss_builtin.item()}")
 
-predictions1 = "/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/crossentropy/checkpoint-{}/OUT{}_fixttc/predictions_0.csv"
+predictions1 = "/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/crossentropy/checkpoint-{}/OUT_DADA2k{}_fixttc/predictions_0.csv"
 clip_err_out = "err_report.csv"
 out_figures_dir = "err_report"
 epoch = 3
@@ -121,16 +123,18 @@ err_df["err_far_score"] = (err_df["nb_err_neg_far"] + err_df["nb_err_pos_far"]) 
 # check classes:
 err_df["category"] = None
 err_df["ego"] = None
-err_df["night"] = None
-import json
+#err_df["night"] = None
+
+anno_path = os.path.join("/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000/annotation/full_anno.csv")
+anno = pd.read_csv(anno_path)
 for i, row in err_df.iterrows():
     clip_name = row["clip"]
-    anno_path = os.path.join("/mnt/experiments/sorlova/datasets/DoTA/dataset/annotations", clip_name + ".json")
-    with open(anno_path) as f:
-        anno = json.load(f)
-        err_df.loc[i, "category"] = anno["accident_name"]
-        err_df.loc[i, "ego"] = anno["ego_involve"]
-        err_df.loc[i, "night"] = anno["night"]
+    clip_type, clip_subfolder = clip_name.split("/")
+    row = anno[(anno["video"] == int(clip_subfolder)) & (anno["type"] == int(clip_type))]
+    assert len(row) == 1, f"Multiple results! \n{clip_name}"
+    err_df.loc[i, "category"] = clip_type
+    err_df.loc[i, "ego"] = clip_type in FrameClsDataset_DADA.ego_categories
+    #err_df.loc[i, "night"] = anno["night"]
 
 err_df.sort_values(by="err_score", ascending=False, inplace=True)
 err_df.to_csv(clip_err_out)
@@ -150,13 +154,13 @@ for cat in cats:
 
 ego_df = err_df[err_df["ego"]]
 noego_df = err_df[err_df["ego"] == False]
-night_df = err_df[err_df["night"]]
-nonight_df = err_df[err_df["night"] == False]
+#night_df = err_df[err_df["night"]]
+#nonight_df = err_df[err_df["night"] == False]
 
 scores_ego = [ego_df["err_score"].mean(), ego_df["err_far_score"].mean(), noego_df["err_score"].mean(), noego_df["err_far_score"].mean()]
 scores_ego_labels = ["ego_score", "ego_far_score", "noego_score", "noego_far_score"]
-scores_night = [night_df["err_score"].mean(), night_df["err_far_score"].mean(), nonight_df["err_score"].mean(), nonight_df["err_far_score"].mean()]
-scores_night_labels = ["night_score", "night_far_score", "day_score", "day_far_score"]
+#scores_night = [night_df["err_score"].mean(), night_df["err_far_score"].mean(), nonight_df["err_score"].mean(), nonight_df["err_far_score"].mean()]
+#scores_night_labels = ["night_score", "night_far_score", "day_score", "day_far_score"]
 
 if save_plots:
     os.makedirs(out_figures_dir, exist_ok=True)
@@ -194,16 +198,16 @@ plt.show()
 if save_plots:
     fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
-fig = plt.figure(figsize=(8, 6), num="scores_night")
-plt.bar(scores_night_labels, scores_night, color='blue', label='normal')
-plt.xlabel('categories')
-plt.ylabel('Count')
-plt.xticks(rotation=45, ha='right')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
-plt.legend()
-plt.show()
-if save_plots:
-    fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
+# fig = plt.figure(figsize=(8, 6), num="scores_night")
+# plt.bar(scores_night_labels, scores_night, color='blue', label='normal')
+# plt.xlabel('categories')
+# plt.ylabel('Count')
+# plt.xticks(rotation=45, ha='right')
+# plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
+# plt.legend()
+# plt.show()
+# if save_plots:
+#     fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
 
 # DEFINE videos for analysis

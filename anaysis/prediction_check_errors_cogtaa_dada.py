@@ -3,8 +3,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import torch
 from scipy.ndimage import label
+from sympy.abc import alpha
 from torch.nn.functional import softmax
 from natsort import natsorted
+
+from dada import FrameClsDataset_DADA
 
 
 def get_pos_and_neg_probs():
@@ -30,24 +33,15 @@ prediction_clipped = torch.clamp(prediction, epsilon, 1.0)
 bce_loss_builtin = torch.nn.functional.binary_cross_entropy(prediction_clipped, target)
 print(f"Binary Cross-Entropy Loss (Builtin): {bce_loss_builtin.item()}")
 
-predictions1 = "/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/crossentropy/checkpoint-{}/OUT{}_fixttc/predictions_0.csv"
+predictions1 = "/home/sorlova/repos/TADTAA/LOTVS-CAP/results/pred_min_best_model.csv"
 clip_err_out = "err_report.csv"
 out_figures_dir = "err_report"
-epoch = 3
-tag = "" # "_train" or ""
-show_hists = False
+#tag = "" # "_train" or ""
+show_hists = True
 save_plots = True
 
-if "crossentropy" in predictions1:
-    loss_tag = "CE"
-elif "focal" in predictions1:
-    loss_tag = "Focal"
-else:
-    raise ValueError("Impossible loss directory!")
-
-
 # ======================================================
-predictions = predictions1.format(epoch, tag)
+predictions = predictions1
 clip_err_out = os.path.join(os.path.dirname(predictions), clip_err_out)
 out_figures_dir = os.path.join(os.path.dirname(predictions), out_figures_dir)
 df = pd.read_csv(predictions)
@@ -64,8 +58,8 @@ if show_hists:
     plt.hist([neg_preds, pos_preds], bins=101, cumulative=False, edgecolor='black', label=['neg', 'pos'])
     plt.xlabel('Probability')
     plt.ylabel('Count')
-    plt.ylim(0, 20000)
-    plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram ')
+    plt.ylim(0, 5200)
+    plt.title(f'DADA CogTAA Histogram ')
     plt.legend()
     plt.show()
 
@@ -74,7 +68,7 @@ if show_hists:
     plt.hist(pos_preds, bins=101, cumulative=-1, edgecolor='black', alpha=0.7, label='pos')
     plt.xlabel('Probability')
     plt.ylabel('Count')
-    plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Cumulative histogram')
+    plt.title(f'DADA CogTAA Cumulative histogram')
     plt.legend()
     plt.show()
 
@@ -121,22 +115,24 @@ err_df["err_far_score"] = (err_df["nb_err_neg_far"] + err_df["nb_err_pos_far"]) 
 # check classes:
 err_df["category"] = None
 err_df["ego"] = None
-err_df["night"] = None
-import json
+#err_df["night"] = None
+
+anno_path = os.path.join("/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000/annotation/full_anno.csv")
+anno = pd.read_csv(anno_path)
 for i, row in err_df.iterrows():
     clip_name = row["clip"]
-    anno_path = os.path.join("/mnt/experiments/sorlova/datasets/DoTA/dataset/annotations", clip_name + ".json")
-    with open(anno_path) as f:
-        anno = json.load(f)
-        err_df.loc[i, "category"] = anno["accident_name"]
-        err_df.loc[i, "ego"] = anno["ego_involve"]
-        err_df.loc[i, "night"] = anno["night"]
+    clip_type, clip_subfolder = clip_name.split("/")
+    row = anno[(anno["video"] == int(clip_subfolder)) & (anno["type"] == int(clip_type))]
+    assert len(row) == 1, f"Multiple results! \n{clip_name}"
+    err_df.loc[i, "category"] = clip_type
+    err_df.loc[i, "ego"] = clip_type in FrameClsDataset_DADA.ego_categories
+    #err_df.loc[i, "night"] = anno["night"]
 
 err_df.sort_values(by="err_score", ascending=False, inplace=True)
 err_df.to_csv(clip_err_out)
 
 # statistics by categories
-cats = err_df["category"].unique().tolist()
+cats = natsorted(err_df["category"].unique().tolist())
 scores_cat = []
 scores_far_cat = []
 scores_ego = []
@@ -150,60 +146,62 @@ for cat in cats:
 
 ego_df = err_df[err_df["ego"]]
 noego_df = err_df[err_df["ego"] == False]
-night_df = err_df[err_df["night"]]
-nonight_df = err_df[err_df["night"] == False]
+#night_df = err_df[err_df["night"]]
+#nonight_df = err_df[err_df["night"] == False]
 
 scores_ego = [ego_df["err_score"].mean(), ego_df["err_far_score"].mean(), noego_df["err_score"].mean(), noego_df["err_far_score"].mean()]
-scores_ego_labels = ["ego_score", "ego_far_score", "noego_score", "noego_far_score"]
-scores_night = [night_df["err_score"].mean(), night_df["err_far_score"].mean(), nonight_df["err_score"].mean(), nonight_df["err_far_score"].mean()]
-scores_night_labels = ["night_score", "night_far_score", "day_score", "day_far_score"]
+scores_ego_labels = ["ego_score", "ego_maj_score", "noego_score", "noego_maj_score"]
+#scores_night = [night_df["err_score"].mean(), night_df["err_far_score"].mean(), nonight_df["err_score"].mean(), nonight_df["err_far_score"].mean()]
+#scores_night_labels = ["night_score", "night_far_score", "day_score", "day_far_score"]
 
 if save_plots:
     os.makedirs(out_figures_dir, exist_ok=True)
 
-fig = plt.figure(figsize=(8, 6), num="scores_categories")
+fig = plt.figure(figsize=(10, 6), num="scores_categories")
 plt.bar(cats, scores_cat, color='blue', label='normal')
 plt.xlabel('categories')
-plt.ylabel('Count')
-plt.xticks(rotation=45, ha='right')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
+plt.ylabel('mean err score')
+plt.xticks(rotation=45, ha='right', fontsize=12)
+plt.title(f'DADA CogTAA Mean err scores by category')
 plt.legend()
 plt.show()
 if save_plots:
     fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
-fig = plt.figure(figsize=(8, 6), num="scores_far_categories")
-plt.bar(cats, scores_far_cat, color='blue', label='normal')
+fig = plt.figure(figsize=(10, 6), num="scores_far_categories")
+plt.bar(cats, scores_cat, color='blue', label='all errs', alpha=0.7)
+plt.bar(cats, scores_far_cat, color='green', label='major', alpha=0.7)
 plt.xlabel('categories')
-plt.ylabel('Count')
-plt.xticks(rotation=45, ha='right')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
+plt.ylabel('mean err score')
+plt.xticks(rotation=45, ha='right', fontsize=12)
+plt.title(f'DADA CogTAA Mean err scores by category')
 plt.legend()
 plt.show()
 if save_plots:
     fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
 fig = plt.figure(figsize=(8, 6), num="scores_ego")
-plt.bar(scores_ego_labels, scores_ego, color='blue', label='normal')
+plt.bar(scores_ego_labels[:2], scores_ego[:2], color='orange', label='normal')
+plt.bar(scores_ego_labels[2:], scores_ego[2:], color='blue', label='normal')
 plt.xlabel('categories')
-plt.ylabel('Count')
-plt.xticks(rotation=45, ha='right')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
+plt.ylabel('mean err score')
+plt.xticks(rotation=15, ha='right', fontsize=12)
+plt.title(f'DADA CogTAA Mean err scores by ego participation')
 plt.legend()
 plt.show()
 if save_plots:
     fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
-fig = plt.figure(figsize=(8, 6), num="scores_night")
-plt.bar(scores_night_labels, scores_night, color='blue', label='normal')
-plt.xlabel('categories')
-plt.ylabel('Count')
-plt.xticks(rotation=45, ha='right')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
-plt.legend()
-plt.show()
-if save_plots:
-    fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
+# fig = plt.figure(figsize=(8, 6), num="scores_night")
+# plt.bar(scores_night_labels, scores_night, color='blue', label='normal')
+# plt.xlabel('categories')
+# plt.ylabel('Count')
+# plt.xticks(rotation=45, ha='right')
+# plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
+# plt.legend()
+# plt.show()
+# if save_plots:
+#     fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
 
 # DEFINE videos for analysis
@@ -217,7 +215,7 @@ nd_bad7 = len(err_df[err_df["err_far_score"] > 0.3])
 nd_bad8 = len(err_df[err_df["err_far_score"] > 0.2])
 nd_bad9 = len(err_df[err_df["err_far_score"] > 0.1])
 
-th = 0.5
+th = 0.6
 bad_clips = err_df[err_df["err_far_score"] > th]
 bad_clips.to_csv(os.path.splitext(clip_err_out)[0] + f"_bad{th}.csv")
 
@@ -233,7 +231,7 @@ plt.hist(
 plt.xlabel('categories')
 plt.ylabel('Count')
 plt.xticks(rotation=45, ha='right')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
+plt.title(f'DADA CogTAA Histogram categories')
 plt.legend()
 plt.show()
 
@@ -253,7 +251,7 @@ plt.text(cx, cy,
          fontsize=18, color='blue', ha='center', va='center', weight='demibold')
 plt.xlabel('clip')
 plt.ylabel('err score')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Err scores by clip')
+plt.title(f'DADA CogTAA Err scores by clip')
 plt.legend()
 plt.show()
 if save_plots:
@@ -273,7 +271,7 @@ cy = (plt.ylim()[0] + plt.ylim()[1]) * 0.9
 plt.text(cx, cy, f'Avg score: {round(err_df["err_score"].mean(), 2)}', fontsize=14, color='blue', ha='center', va='center', weight='demibold')
 plt.xlabel('err_score')
 plt.ylabel('Count')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram scores')
+plt.title(f'DADA CogTAA Histogram scores')
 plt.legend()
 plt.show()
 if save_plots:
@@ -293,7 +291,7 @@ cy = (plt.ylim()[0] + plt.ylim()[1]) * 0.9
 plt.text(cx, cy, f'Avg score: {round(err_df["err_pos_score"].mean(), 2)}', fontsize=14, color='blue', ha='center', va='center', weight='demibold')
 plt.xlabel('err_score')
 plt.ylabel('Count')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram scores FN')
+plt.title(f'DADA CogTAA Histogram scores FN')
 plt.legend()
 plt.show()
 if save_plots:
@@ -313,7 +311,7 @@ cy = (plt.ylim()[0] + plt.ylim()[1]) * 0.9
 plt.text(cx, cy, f'Avg score: {round(err_df["err_neg_score"].mean(), 2)}', fontsize=14, color='blue', ha='center', va='center', weight='demibold')
 plt.xlabel('err_score')
 plt.ylabel('Count')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram scores FP')
+plt.title(f'DADA CogTAA Histogram scores FP')
 plt.legend()
 plt.show()
 if save_plots:
@@ -333,7 +331,7 @@ cy = (plt.ylim()[0] + plt.ylim()[1]) * 0.9
 plt.text(cx, cy, f'Avg score: {round(err_df["err_far_score"].mean(), 2)}', fontsize=14, color='blue', ha='center', va='center', weight='demibold')
 plt.xlabel('err_score')
 plt.ylabel('Count')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram scores no transition')
+plt.title(f'DADA CogTAA Histogram scores no transition')
 plt.legend()
 plt.show()
 if save_plots:
@@ -373,7 +371,7 @@ cy = (plt.ylim()[0] + plt.ylim()[1]) * 0.9
 plt.text(cx, cy, f'Avg score: {round(err_df["err_neg_far_score"].mean(), 2)}', fontsize=14, color='blue', ha='center', va='center', weight='demibold')
 plt.xlabel('err_score')
 plt.ylabel('Count')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram FP scores no transition')
+plt.title(f'DADA CogTAA Histogram FP scores no transition')
 plt.legend()
 plt.show()
 if save_plots:

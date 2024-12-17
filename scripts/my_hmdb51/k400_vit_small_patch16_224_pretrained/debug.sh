@@ -1,23 +1,23 @@
 # Set the path to save checkpoints
-OUTPUT_DIR='logs/dota_fixloss/check_mem_final/'
+OUTPUT_DIR='logs/hmdb51/from_k400_vits_closer_settings2/'
 # path to Kinetics set (train.csv/val.csv/test.csv)
-DATA_PATH='/mnt/experiments/sorlova/datasets/DoTA'
+DATA_PATH='/mnt/experiments/sorlova/datasets/HMDB51'
 # path to pretrain model
-MODEL_PATH='logs/pretrained/distill/vit_s_k710_dl_from_giant.pth'
+MODEL_PATH='logs/pretrained/k400_vits/checkpoint.pth'
 
 # We add repeated_aug (--num_sample = 2) on Kinetics-400 here, 
 # which could better performance while need more time for fine-tuning
 
-# nproc_per_node is the number of used GPUs
-# batch_size is set for one GPU
-# batch_size=16, nproc_per_node=2 => the effective batch_size is 32
-OMP_NUM_THREADS=1 torchrun --nproc_per_node=2 \
-    --master_port 12350 \
-    run_frame_finetuning.py \
+# nnodes 4, batch size 16 for 8 GPUs
+
+# batch_size can be adjusted according to number of GPUs
+# this script is for 2 GPUs (1 nodes x 2 GPUs)
+OMP_NUM_THREADS=1 torchrun --nproc_per_node=1 \
+    --master_port 12320 \
+    run_class_finetuning.py \
     --model vit_small_patch16_224 \
-    --data_set DoTA \
-    --loss crossentropy \
-    --nb_classes 2 \
+    --data_set HMDB51 \
+    --nb_classes 51 \
     --data_path ${DATA_PATH} \
     --finetune ${MODEL_PATH} \
     --log_dir ${OUTPUT_DIR} \
@@ -36,7 +36,7 @@ OMP_NUM_THREADS=1 torchrun --nproc_per_node=2 \
     --drop_path 0.2 \
     --layer_decay 0.7 \
     --epochs 150 \
-    --test_num_segment 1 \
-    --test_num_crop 1 \
+    --test_num_segment 5 \
+    --test_num_crop 3 \
     --dist_eval \
     --enable_deepspeed 

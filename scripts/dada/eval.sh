@@ -1,10 +1,11 @@
 # Set the path to save checkpoints
-OUTPUT_DIR='logs/auroc_behavior/crossentropy/checkpoint-3/OUT_DADA2k_fixttc'
+OUTPUT_DIR='logs/dota_fixloss/focal_1gpu/OUT_DADA2k'
 # path to Kinetics set (train.csv/val.csv/test.csv)
 DATA_PATH='/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000'
 # path to pretrain model
 # 'logs/dota_fixloss/focal_1gpu/checkpoint-bestap/mp_rank_00_model_states.pt'
-MODEL_PATH='logs/auroc_behavior/crossentropy/checkpoint-3/mp_rank_00_model_states.pt'
+# 'logs/auroc_behavior/crossentropy/checkpoint-3/mp_rank_00_model_states.pt'
+MODEL_PATH='logs/dota_fixloss/focal_1gpu/checkpoint-bestap/mp_rank_00_model_states.pt'
 
 # We add repeated_aug (--num_sample = 2) on Kinetics-400 here, 
 # which could better performance while need more time for fine-tuning
