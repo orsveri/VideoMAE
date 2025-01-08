@@ -1,0 +1,28 @@
+format:
+clip_name,old_anomaly_start_time,old_anomaly_end_time,new_anomaly_start_time,new_anomaly_end_time
+
+===============
+1 two clips in one:
+
+[fps10 split frames 0-80]   2TmFM9p1KF8_004066_p1,3.4,8.0,2.4,5.0
+[fps10 split frames 81-147] 2TmFM9p1KF8_004066_p2,0.0,4.4,2.2,4.4
+
+[fps10 split frames 0-125]   bFGmOp9H3MA_000355_p1,3.5,12.5,3.5,8.0
+[fps10 split frames 126-237] bFGmOp9H3MA_000355_p2,0.0,11.1,3.7,7.2
+
+(split into separate clips)
+
+===============
+2 double range ("manual change" code to change labels):
+
+4OGV0AbV91U_004538,2.6,4.6,3.2,4.1
+4OGV0AbV91U_004538,2.6,4.6,5.3,7.2
+
+fWJbp43k644_005522,1.3,5.1,3.7,5.5
+fWJbp43k644_005522,1.3,5.1,12.1,14.5
+
+r6_ZhT7rmhM_001523,4.0,6.6,4.1,7.6
+r6_ZhT7rmhM_001523,4.0,6.6,8.9,9.1
+
+yr0gNIxRluE_003972,2.0,3.7,1.6,4.1
+yr0gNIxRluE_003972,2.0,3.7,5.9,7.5

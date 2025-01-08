@@ -195,7 +195,7 @@ class VisionTransformer(nn.Module):
                  all_frames=16,
                  tubelet_size=2,
                  use_checkpoint=False,
-                 use_mean_pooling=True):
+                 final_reduction="fc_norm"):
         super().__init__()
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
@@ -221,19 +221,23 @@ class VisionTransformer(nn.Module):
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer,
                 init_values=init_values)
             for i in range(depth)])
-        self.norm = nn.Identity() if use_mean_pooling else norm_layer(embed_dim)
-        self.fc_norm = norm_layer(embed_dim) if use_mean_pooling else None
+        assert final_reduction in ("fc_norm", "cls", 'none', None)
+        self.final_reduction = final_reduction
+        self.norm = nn.Identity() if final_reduction == "fc_norm" else norm_layer(embed_dim)
+        self.fc_norm = norm_layer(embed_dim) if final_reduction == "fc_norm" else None
         self.fc_dropout = nn.Dropout(p=fc_drop_rate) if fc_drop_rate > 0 else nn.Identity()
         self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
         if use_learnable_pos_emb:
             trunc_normal_(self.pos_embed, std=.02)
 
-        trunc_normal_(self.head.weight, std=.02)
+        if hasattr(self.head, "weight"):
+            trunc_normal_(self.head.weight, std=.02)
         self.apply(self._init_weights)
 
-        self.head.weight.data.mul_(init_scale)
-        self.head.bias.data.mul_(init_scale)
+        if hasattr(self.head, "weight"):
+            self.head.weight.data.mul_(init_scale)
+            self.head.bias.data.mul_(init_scale)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -273,11 +277,14 @@ class VisionTransformer(nn.Module):
             for blk in self.blocks:
                 x = blk(x)
 
-        x = self.norm(x)
-        if self.fc_norm is not None:
+        x = self.norm(x)  # so features have stable and consistent distribution
+
+        if self.final_reduction == "fc_norm":
             return self.fc_norm(x.mean(1))
-        else:
+        elif self.final_reduction == "cls":
             return x[:, 0]
+        else:
+            return x
 
     def forward(self, x):
         x = self.forward_features(x)
@@ -346,3 +353,12 @@ def vit_huge_patch16_224(pretrained=False, **kwargs):
         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     model.default_cfg = _cfg()
     return model
+
+# from decoders.dpt import DPTVideoMAE
+# @register_model
+# def dpt_vit_small_patch16_224(pretrained=False, **kwargs):
+#     model = DPTVideoMAE(
+#         patch_size=16, embed_dim=384, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,
+#         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
+#     model.default_cfg = _cfg()
+#     return model

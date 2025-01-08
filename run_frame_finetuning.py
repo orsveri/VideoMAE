@@ -17,7 +17,8 @@ from timm.utils import ModelEma
 from optim_factory import create_optimizer, get_parameter_groups, LayerDecayValueAssigner
 
 from datasets import build_dataset
-from engine_for_finetuning import train_one_epoch, validation_one_epoch, final_test, merge
+from datasets_frame import build_frame_dataset
+from engine_for_frame_finetuning import train_one_epoch, validation_one_epoch, final_test, merge
 from utils import NativeScalerWithGradNormCount as NativeScaler
 from utils import  multiple_samples_collate
 import utils
@@ -53,6 +54,9 @@ def get_args():
     parser.add_argument('--model_ema_force_cpu', action='store_true', default=False, help='')
 
     # Optimizer parameters
+    parser.add_argument('--loss', default='crossentropy',
+                        choices=['crossentropy', 'focal', 'focal6x100', 'focal2_6', 'focal2_2', 'smoothap', 'exponential1', "2bce"],
+                        type=str, help='dataset')
     parser.add_argument('--opt', default='adamw', type=str, metavar='OPTIMIZER',
                         help='Optimizer (default: "adamw"')
     parser.add_argument('--opt_eps', default=1e-8, type=float, metavar='EPSILON',
@@ -98,8 +102,8 @@ def get_args():
     # Evaluation parameters
     parser.add_argument('--crop_pct', type=float, default=None)
     parser.add_argument('--short_side_size', type=int, default=224)
-    parser.add_argument('--test_num_segment', type=int, default=5)
-    parser.add_argument('--test_num_crop', type=int, default=3)
+    parser.add_argument('--test_num_segment', type=int, default=1)
+    parser.add_argument('--test_num_crop', type=int, default=1)
     
     # Random Erase params
     parser.add_argument('--reprob', type=float, default=0.25, metavar='PCT',
@@ -132,9 +136,8 @@ def get_args():
     parser.add_argument('--init_scale', default=0.001, type=float)
     parser.add_argument('--use_checkpoint', action='store_true')
     parser.set_defaults(use_checkpoint=False)
-    parser.add_argument('--use_mean_pooling', action='store_true')
-    parser.set_defaults(use_mean_pooling=True)
-    parser.add_argument('--use_cls', action='store_false', dest='use_mean_pooling')
+    parser.add_argument('--final_reduction', default='fc_norm', choices=['fc_norm', 'cls', 'none'],
+                        type=str, help='type of reduction at the end of ViT encoder. cls: only CLS token, fc_norm: mean pooling, none: no reduction')
 
     # Dataset parameters
     parser.add_argument('--data_path', default='/path/to/list_kinetics-400', type=str,
@@ -146,8 +149,9 @@ def get_args():
     parser.add_argument('--imagenet_default_mean_and_std', default=True, action='store_true')
     parser.add_argument('--num_segments', type=int, default= 1)
     parser.add_argument('--num_frames', type=int, default= 16)
-    parser.add_argument('--sampling_rate', type=int, default= 4)
-    parser.add_argument('--data_set', default='Kinetics-400', choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51','image_folder'],
+    parser.add_argument('--sampling_rate', type=int, default=4)
+    parser.add_argument('--view_fps', type=int, default=10)  # DoTA, DADA2k only!
+    parser.add_argument('--data_set', default='Kinetics-400', choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51','DoTA', 'DADA2k','image_folder'],
                         type=str, help='dataset')
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
@@ -172,7 +176,7 @@ def get_args():
                         help='Perform evaluation only')
     parser.add_argument('--dist_eval', action='store_true', default=False,
                         help='Enabling distributed evaluation')
-    parser.add_argument('--num_workers', default=10, type=int)
+    parser.add_argument('--num_workers', default=8, type=int)
     parser.add_argument('--pin_mem', action='store_true',
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
@@ -193,6 +197,7 @@ def get_args():
     # fix
     parser.local_rank = int(os.getenv("LOCAL_RANK", 0))
 
+
     if known_args.enable_deepspeed:
         try:
             import deepspeed
@@ -209,7 +214,13 @@ def get_args():
 
 
 def main(args, ds_init):
-    utils.init_distributed_mode(args)
+    try:
+        utils.init_distributed_mode(args)
+        print("Distributed process initialized successfully.")
+        print(f"\tRank {utils.get_rank()}, World Size: {utils.get_world_size()}, Device: {torch.cuda.current_device()}")
+    except Exception as e:
+        print(f"Initialization failed for rank {utils.get_rank()}: {e}")
+        exit(1)
 
     if ds_init is not None:
         utils.create_ds_config(args)
@@ -224,31 +235,37 @@ def main(args, ds_init):
     np.random.seed(seed)
     # random.seed(seed)
 
+    cudnn.enabled = True
     cudnn.benchmark = True
-
-    dataset_train, args.nb_classes = build_dataset(is_train=True, test_mode=False, args=args)
-    if args.disable_eval_during_finetuning:
-        dataset_val = None
-    else:
-        dataset_val, _ = build_dataset(is_train=False, test_mode=False, args=args)
-    dataset_test, _ = build_dataset(is_train=False, test_mode=True, args=args)
-    
 
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
-    sampler_train = torch.utils.data.DistributedSampler(
-        dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-    )
-    print("Sampler_train = %s" % str(sampler_train))
+
+    dataset_train = None
+    if not args.eval:
+        dataset_train, args.nb_classes = build_frame_dataset(is_train=True, test_mode=False, args=args)
+        sampler_train = torch.utils.data.DistributedSampler(
+            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True, drop_last=False
+        )
+        print("Sampler_train = %s" % str(sampler_train))
+    if args.disable_eval_during_finetuning:
+        dataset_val = None
+    else:
+        dataset_val, _ = build_frame_dataset(is_train=False, test_mode=False, args=args)
+    dataset_test, _ = build_frame_dataset(is_train=False, test_mode=True, args=args)
+
+    print(f"dset lengths: train {len(dataset_train) if dataset_train is not None else '<not used>'}, "
+          f"val {len(dataset_val) if dataset_train is not None else '<not used>'}")
+
     if args.dist_eval:
         if len(dataset_val) % num_tasks != 0:
             print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
                     'This will slightly alter validation results as extra duplicate entries are added to achieve '
                     'equal num of samples per-process.')
         sampler_val = torch.utils.data.DistributedSampler(
-            dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False)
+            dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False, drop_last=False)
         sampler_test = torch.utils.data.DistributedSampler(
-            dataset_test, num_replicas=num_tasks, rank=global_rank, shuffle=False)
+            dataset_test, num_replicas=num_tasks, rank=global_rank, shuffle=False, drop_last=False)
     else:
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
@@ -263,15 +280,16 @@ def main(args, ds_init):
     else:
         collate_func = None
 
-    data_loader_train = torch.utils.data.DataLoader(
-        dataset_train, sampler=sampler_train,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        drop_last=True,
-        prefetch_factor=4,  # orsveri
-        collate_fn=collate_func,
-    )
+    if dataset_train is not None:
+        data_loader_train = torch.utils.data.DataLoader(
+            dataset_train, sampler=sampler_train,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_mem,
+            drop_last=False,
+            prefetch_factor=4,  # orsveri
+            collate_fn=collate_func,
+        )
 
     if dataset_val is not None:
         data_loader_val = torch.utils.data.DataLoader(
@@ -280,7 +298,7 @@ def main(args, ds_init):
             num_workers=args.num_workers,
             pin_memory=args.pin_mem,
             drop_last=False,
-            prefetch_factor=4  # orsveri
+            #prefetch_factor=4  # orsveri
         )
     else:
         data_loader_val = None
@@ -292,19 +310,10 @@ def main(args, ds_init):
             num_workers=args.num_workers,
             pin_memory=args.pin_mem,
             drop_last=False,
-            prefetch_factor=4  # orsveri
+            #prefetch_factor=4  # orsveri
         )
     else:
         data_loader_test = None
-
-    mixup_fn = None
-    mixup_active = args.mixup > 0 or args.cutmix > 0. or args.cutmix_minmax is not None
-    if mixup_active:
-        print("Mixup is activated!")
-        mixup_fn = Mixup(
-            mixup_alpha=args.mixup, cutmix_alpha=args.cutmix, cutmix_minmax=args.cutmix_minmax,
-            prob=args.mixup_prob, switch_prob=args.mixup_switch_prob, mode=args.mixup_mode,
-            label_smoothing=args.smoothing, num_classes=args.nb_classes)
 
     model = create_model(
         args.model,
@@ -318,7 +327,7 @@ def main(args, ds_init):
         attn_drop_rate=args.attn_drop_rate,
         drop_block_rate=None,
         use_checkpoint=args.use_checkpoint,
-        use_mean_pooling=args.use_mean_pooling,
+        final_reduction=args.final_reduction,
         init_scale=args.init_scale,
     )
 
@@ -392,13 +401,20 @@ def main(args, ds_init):
 
     model.to(device)
 
+    # # Freeze specific layers
+    # for name, param in model.named_parameters():
+    #     if "blocks" in name and int(name.split(".")[1]) < 6:  # Freeze first 6 blocks
+    #         param.requires_grad = False
+    #     else:
+    #         param.requires_grad = True
+
     model_ema = None
     if args.model_ema:
         model_ema = ModelEma(
             model,
             decay=args.model_ema_decay,
             device='cpu' if args.model_ema_force_cpu else '',
-            resume='')
+            resume=args.resume)
         print("Using EMA with decay = %.8f" % args.model_ema_decay)
 
     model_without_ddp = model
@@ -407,16 +423,17 @@ def main(args, ds_init):
     print("Model = %s" % str(model_without_ddp))
     print('number of params:', n_parameters)
 
-    total_batch_size = args.batch_size * args.update_freq * utils.get_world_size()
-    num_training_steps_per_epoch = len(dataset_train) // total_batch_size
-    args.lr = args.lr * total_batch_size / 256
-    args.min_lr = args.min_lr * total_batch_size / 256
-    args.warmup_lr = args.warmup_lr * total_batch_size / 256
-    print("LR = %.8f" % args.lr)
-    print("Batch size = %d" % total_batch_size)
-    print("Update frequent = %d" % args.update_freq)
-    print("Number of training examples = %d" % len(dataset_train))
-    print("Number of training training per epoch = %d" % num_training_steps_per_epoch)
+    if not args.eval:
+        total_batch_size = args.batch_size * args.update_freq * utils.get_world_size()
+        num_training_steps_per_epoch = len(dataset_train) // total_batch_size
+        args.lr = args.lr * total_batch_size / 256
+        args.min_lr = args.min_lr * total_batch_size / 256
+        args.warmup_lr = args.warmup_lr * total_batch_size / 256
+        print("LR = %.8f" % args.lr)
+        print("Batch size = %d" % total_batch_size)
+        print("Update frequent = %d" % args.update_freq)
+        print("Number of training examples = %d" % len(dataset_train))
+        print("Number of training training per epoch = %d" % num_training_steps_per_epoch)
 
     num_layers = model_without_ddp.get_num_layers()
     if args.layer_decay < 1.0:
@@ -453,24 +470,47 @@ def main(args, ds_init):
             get_layer_scale=assigner.get_scale if assigner is not None else None)
         loss_scaler = NativeScaler()
 
-    print("Use step level LR scheduler!")
-    lr_schedule_values = utils.cosine_scheduler(
-        args.lr, args.min_lr, args.epochs, num_training_steps_per_epoch,
-        warmup_epochs=args.warmup_epochs, warmup_steps=args.warmup_steps,
-    )
-    if args.weight_decay_end is None:
-        args.weight_decay_end = args.weight_decay
-    wd_schedule_values = utils.cosine_scheduler(
-        args.weight_decay, args.weight_decay_end, args.epochs, num_training_steps_per_epoch)
-    print("Max WD = %.7f, Min WD = %.7f" % (max(wd_schedule_values), min(wd_schedule_values)))
+    if not args.eval:
+        print("Use step level LR scheduler!")
+        lr_schedule_values = utils.cosine_scheduler(
+            args.lr, args.min_lr, args.epochs, num_training_steps_per_epoch,
+            warmup_epochs=args.warmup_epochs, warmup_steps=args.warmup_steps,
+        )
+        if args.weight_decay_end is None:
+            args.weight_decay_end = args.weight_decay
+        wd_schedule_values = utils.cosine_scheduler(
+            args.weight_decay, args.weight_decay_end, args.epochs, num_training_steps_per_epoch)
+        print("Max WD = %.7f, Min WD = %.7f" % (max(wd_schedule_values), min(wd_schedule_values)))
 
-    if mixup_fn is not None:
-        # smoothing is handled with mixup label transform
-        criterion = SoftTargetCrossEntropy()
-    elif args.smoothing > 0.:
-        criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
-    else:
+    mixup_fn = None
+    # if mixup_fn is not None:
+    #     # smoothing is handled with mixup label transform
+    #     criterion = SoftTargetCrossEntropy()
+    # elif args.smoothing > 0.:
+    #     criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
+    # else:
+    #     criterion = torch.nn.CrossEntropyLoss()
+
+    with_ttc = False
+    if args.loss == "crossentropy":
         criterion = torch.nn.CrossEntropyLoss()
+    elif args.loss == "focal":
+        criterion = utils.FocalLoss(alpha=0.75, gamma=2)
+    elif args.loss == "focal6x100":
+        criterion = utils.FocalLoss(alpha=0.75, gamma=6, multiplier=100)
+    elif args.loss == "focal2_6":
+        criterion = utils.FocalLoss2(gamma=6, multiplier=50)
+    elif args.loss == "focal2_2":
+        criterion = utils.FocalLoss2(gamma=2, multiplier=10)
+    elif args.loss == "2bce":
+        criterion = utils.DoubleBCELoss()
+    elif args.loss == "smoothap":
+        criterion = utils.SmoothAPLoss()
+    elif args.loss == "exponential1":
+        criterion = utils.TemporalExponentialLoss(lambda_param=0.1)
+        with_ttc = True
+    else:
+        raise NotImplementedError(f"Loss not implemented: {args.loss}")
 
     print("criterion = %s" % str(criterion))
 
@@ -479,63 +519,120 @@ def main(args, ds_init):
         optimizer=optimizer, loss_scaler=loss_scaler, model_ema=model_ema)
 
     if args.eval:
-        preds_file = os.path.join(args.output_dir, str(global_rank) + '.txt')
-        test_stats = final_test(data_loader_test, model, device, preds_file)
+        preds_file = os.path.join(args.output_dir, f'predictions_{global_rank}.csv')
+        assert not os.path.exists(preds_file), "File already exists!"
+        test_stats = final_test(data_loader_test, model, device, preds_file,
+                                plot_dir=os.path.join(args.output_dir, "plots"))
         torch.distributed.barrier()
-        if global_rank == 0:
-            print("Start merging results...")
-            final_top1 ,final_top5 = merge(args.output_dir, num_tasks)
-            print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%, Top-5: {final_top5:.2f}%")
-            log_stats = {'Final top-1': final_top1,
-                        'Final Top-5': final_top5}
-            if args.output_dir and utils.is_main_process():
-                with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_stats) + "\n")
+        #if global_rank == 0:
+            #print("Start merging results...")
+            # final_top1 = merge(args.output_dir, num_tasks)
+            # print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%")
+            # log_stats = {'Final top-1': final_top1}
+            # if args.output_dir and utils.is_main_process():
+            #     with open(os.path.join(args.output_dir, "results.txt"), mode="a", encoding="utf-8") as f:
+            #         f.write(json.dumps(log_stats) + "\n")
         exit(0)
-        
 
+    with open(os.path.join(args.output_dir, "params.json"), mode="w") as f:
+        json.dump(vars(args), f, indent=2)
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     max_accuracy = 0.0
+    max_ap = 0.0
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
         if log_writer is not None:
             log_writer.set_step(epoch * num_training_steps_per_epoch * args.update_freq)
-        train_stats = train_one_epoch(
+        print("\ttraining another epoch...")
+        train_stats_, train_stats, plots = train_one_epoch(
             model, criterion, data_loader_train, optimizer,
             device, epoch, loss_scaler, args.clip_grad, model_ema, mixup_fn,
             log_writer=log_writer, start_steps=epoch * num_training_steps_per_epoch,
             lr_schedule_values=lr_schedule_values, wd_schedule_values=wd_schedule_values,
             num_training_steps_per_epoch=num_training_steps_per_epoch, update_freq=args.update_freq,
+            with_ttc=with_ttc
         )
-        if args.output_dir and args.save_ckpt:
-            if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
-                utils.save_model(
-                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                    loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
+        if log_writer is not None:
+            log_writer.update(train_acc=train_stats['metr_acc'], head="my_train", step=epoch)
+            log_writer.update(train_ap=train_stats['ap'], head="my_train", step=epoch)
+            log_writer.update(train_auroc=train_stats['auroc'], head="my_train", step=epoch)
+            log_writer.update(train_recall=train_stats['recall'], head="my_train", step=epoch)
+            log_writer.update(train_precision=train_stats['precision'], head="my_train", step=epoch)
+            log_writer.update(train_f1=train_stats['f1'], head="my_train", step=epoch)
+            #
+            log_writer.update(train_logP_mean=train_stats['logitsP_mean'], head="my_train_extra", step=epoch)
+            log_writer.update(train_logP_std=train_stats['logitsP_std'], head="my_train_extra", step=epoch)
+            log_writer.update(train_logP_median=train_stats['logitsP_median'], head="my_train_extra", step=epoch)
+            log_writer.update(train_logN_mean=train_stats['logitsN_mean'], head="my_train_extra", step=epoch)
+            log_writer.update(train_logN_std=train_stats['logitsN_std'], head="my_train_extra", step=epoch)
+            log_writer.update(train_logN_median=train_stats['logitsN_median'], head="my_train_extra", step=epoch)
+            log_writer.update(train_probs_mean=train_stats['probs_mean'], head="my_train_extra", step=epoch)
+            log_writer.update(train_probs_std=train_stats['probs_std'], head="my_train_extra", step=epoch)
+            log_writer.update(train_probs_median=train_stats['probs_median'], head="my_train_extra", step=epoch)
+            #
+            [log_writer.writer.add_figure(f"train_plots/train_{k}", fig, global_step=epoch) for k, fig in plots.items()]
+        # if args.output_dir and args.save_ckpt:
+        #     if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
+        #         utils.save_model(
+        #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+        #             loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
         if data_loader_val is not None:
-            test_stats = validation_one_epoch(data_loader_val, model, device)
-            print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats['acc1']:.1f}%")
-            if max_accuracy < test_stats["acc1"]:
-                max_accuracy = test_stats["acc1"]
+            test_stats_, test_stats, plots = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
+            print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats_['acc']:.1f}%")
+            if max_accuracy < test_stats["auroc"]:
+                max_accuracy = test_stats["auroc"]
                 if args.output_dir and args.save_ckpt:
                     utils.save_model(
                         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                        loss_scaler=loss_scaler, epoch="best", model_ema=model_ema)
-
+                        loss_scaler=loss_scaler, epoch="bestauroc", model_ema=model_ema)
+            if max_ap < test_stats["ap"]:
+                max_ap = test_stats["ap"]
+                if args.output_dir and args.save_ckpt:
+                    utils.save_model(
+                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                        loss_scaler=loss_scaler, epoch="bestap", model_ema=model_ema)
+            #
+            epoch_save_list = (1, 3, 4, 5, 7, 15)
+            if epoch in epoch_save_list:
+                utils.save_model(
+                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                    loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema
+                )
+            #
             print(f'Max accuracy: {max_accuracy:.2f}%')
             if log_writer is not None:
-                log_writer.update(val_acc1=test_stats['acc1'], head="perf", step=epoch)
-                log_writer.update(val_acc5=test_stats['acc5'], head="perf", step=epoch)
-                log_writer.update(val_loss=test_stats['loss'], head="perf", step=epoch)
+                log_writer.update(val_acc=test_stats_['acc'], head="val", step=epoch)
+                log_writer.update(val_loss=test_stats_['loss'], head="val", step=epoch)
+                log_writer.update(val_acc=test_stats['metr_acc'], head="val", step=epoch)
+                log_writer.update(val_ap=test_stats['ap'], head="val", step=epoch)
+                log_writer.update(val_auroc=test_stats['auroc'], head="val", step=epoch)
+                log_writer.update(val_recall=test_stats['recall'], head="val", step=epoch)
+                log_writer.update(val_precision=test_stats['precision'], head="val", step=epoch)
+                log_writer.update(val_f1=test_stats['f1'], head="val", step=epoch)
+                #
+                log_writer.update(val_logP_mean=test_stats['logitsP_mean'], head="val_extra", step=epoch)
+                log_writer.update(val_logP_std=test_stats['logitsP_std'], head="val_extra", step=epoch)
+                log_writer.update(val_logP_median=test_stats['logitsP_median'], head="val_extra", step=epoch)
+                log_writer.update(val_logN_mean=test_stats['logitsN_mean'], head="val_extra", step=epoch)
+                log_writer.update(val_logN_std=test_stats['logitsN_std'], head="val_extra", step=epoch)
+                log_writer.update(val_logN_median=test_stats['logitsN_median'], head="val_extra", step=epoch)
+                log_writer.update(val_probs_mean=test_stats['probs_mean'], head="val_extra", step=epoch)
+                log_writer.update(val_probs_std=test_stats['probs_std'], head="val_extra", step=epoch)
+                log_writer.update(val_probs_median=test_stats['probs_median'], head="val_extra", step=epoch)
+                #
+                [log_writer.writer.add_figure(f"val_plots/val_{k}", fig, global_step=epoch) for k, fig in plots.items()]
 
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                         **{f'train_{k}': v for k, v in train_stats_.items()},
                          **{f'val_{k}': v for k, v in test_stats.items()},
+                         **{f'val_{k}': v for k, v in test_stats_.items()},
                          'epoch': epoch,
                          'n_parameters': n_parameters}
         else:
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
+                         **{f'train_{k}': v for k, v in train_stats_.items()},
                          'epoch': epoch,
                          'n_parameters': n_parameters}
         if args.output_dir and utils.is_main_process():
@@ -545,17 +642,16 @@ def main(args, ds_init):
                 f.write(json.dumps(log_stats) + "\n")
 
     preds_file = os.path.join(args.output_dir, str(global_rank) + '.txt')
-    test_stats = final_test(data_loader_test, model, device, preds_file)
+    test_stats = final_test(data_loader_test, model, device, preds_file, with_ttc=with_ttc)
     torch.distributed.barrier()
-    if global_rank == 0:
-        print("Start merging results...")
-        final_top1 ,final_top5 = merge(args.output_dir, num_tasks)
-        print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%, Top-5: {final_top5:.2f}%")
-        log_stats = {'Final top-1': final_top1,
-                    'Final Top-5': final_top5}
-        if args.output_dir and utils.is_main_process():
-            with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
-                f.write(json.dumps(log_stats) + "\n")
+    # if global_rank == 0:
+    #     print("Start merging results...")
+    #     final_top1 = merge(args.output_dir, num_tasks)
+    #     print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%")
+    #     log_stats = {'Final top-1': final_top1}
+    #     if args.output_dir and utils.is_main_process():
+    #         with open(os.path.join(args.output_dir, "log_test.txt"), mode="a", encoding="utf-8") as f:
+    #             f.write(json.dumps(log_stats) + "\n")
 
 
     total_time = time.time() - start_time
