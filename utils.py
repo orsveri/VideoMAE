@@ -532,7 +532,9 @@ def multiple_samples_collate(batch, fold=False):
     inputs = [item for sublist in inputs for item in sublist]
     labels = [item for sublist in labels for item in sublist]
     video_idx = [item for sublist in video_idx for item in sublist]
-    extra_data = [item for sublist in extra_data for item in sublist]
+    if not isinstance(extra_data[0], dict):
+        extra_data = [item for sublist in extra_data for item in sublist]
+
     inputs, labels, video_idx, extra_data = (
         default_collate(inputs),
         default_collate(labels),

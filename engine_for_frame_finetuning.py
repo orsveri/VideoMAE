@@ -19,7 +19,7 @@ import seaborn as sns
 from dataset.vis_tools import threshold_curve_plots
 from utils import gather_predictions, gather_predictions_nontensor
 
-THRESHOLDS = np.arange(0.01, 1.0, 0.01).tolist()
+THRESHOLDS = np.arange(0.00, 1.001, 0.01).tolist()
 
 
 def train_class_batch(model, samples, target, criterion):
@@ -89,12 +89,12 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         labels.append(targets.detach().to(device, non_blocking=True) if if_dist else targets.detach().cpu())  # !!
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
-        print("extra info")
-        print("type", type(extra_info))
-        print(extra_info)
-        labels = extra_info["smoothed_labels"]
+        # print("extra info")
+        # print("type", type(extra_info))
+        # print(extra_info)
+        # exit(0)
         if smoothed_labels_for_loss:
-            targets_loss = labels.to(device, non_blocking=True)
+            targets_loss = extra_info["smoothed_labels"].to(device, non_blocking=True)
         else:
             targets_loss = targets
         if with_ttc:
@@ -439,12 +439,12 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False, 
         fig2 = threshold_curve_plots(
             x_values=pr_recall, y_values=pr_precision, thresholds=pr_thresholds + [1.],
             x_label="Recall", y_label="Precision", plot_name="PR curve",
-            score=True, to_img=True
+            score=True, to_img=True, curve_type_correction="pr"
         )
         fig3 = threshold_curve_plots(
             x_values=roc_fpr, y_values=roc_tpr, thresholds=roc_thresholds,
             x_label="FP rate", y_label="TP rate", plot_name="ROC curve",
-            score=True, to_img=True
+            score=True, to_img=True, curve_type_correction="roc"
         )
         cv2.imwrite(os.path.join(plot_dir, "pr.jpg"), fig2)
         cv2.imwrite(os.path.join(plot_dir, "roc.jpg"), fig3)
@@ -566,14 +566,14 @@ def plot_figures(confmat, pr_curve, roc_curve):
     fig2 = threshold_curve_plots(
         x_values=pr_recall.tolist(), y_values=pr_precision.tolist(), thresholds=pr_thresholds.tolist() + [1.],
         x_label="Recall", y_label="Precision", plot_name="PR curve",
-        score=True, to_img=False
+        score=True, to_img=False, curve_type_correction="pr"
     )
     plt.close(fig2)
     roc_fpr, roc_tpr, roc_thresholds = roc_curve
     fig3 = threshold_curve_plots(
         x_values=roc_fpr.tolist(), y_values=roc_tpr.tolist(), thresholds=roc_thresholds.tolist(),
         x_label="FP rate", y_label="TP rate", plot_name="ROC curve",
-        score=True, to_img=False
+        score=True, to_img=False, curve_type_correction="roc"
     )
     plt.close(fig3)
     plots = {"confusion_matrix": fig1, "PR_curve": fig2, "ROC_curve": fig3}

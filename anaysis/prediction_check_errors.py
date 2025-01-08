@@ -30,12 +30,13 @@ prediction_clipped = torch.clamp(prediction, epsilon, 1.0)
 bce_loss_builtin = torch.nn.functional.binary_cross_entropy(prediction_clipped, target)
 print(f"Binary Cross-Entropy Loss (Builtin): {bce_loss_builtin.item()}")
 
+# "_fixttc" ?
 predictions1 = "/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/crossentropy/checkpoint-{}/OUT{}_fixttc/predictions_0.csv"
 clip_err_out = "err_report.csv"
 out_figures_dir = "err_report"
 epoch = 3
-tag = "" # "_train" or ""
-show_hists = False
+tag = "_train" # "_train" or ""
+show_hists = True
 save_plots = True
 
 if "crossentropy" in predictions1:
@@ -60,7 +61,7 @@ pos_preds = probs[labels]
 neg_preds = probs[~labels]
 
 if show_hists:
-    plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(8, 6), num="probs histogram")
     plt.hist([neg_preds, pos_preds], bins=101, cumulative=False, edgecolor='black', label=['neg', 'pos'])
     plt.xlabel('Probability')
     plt.ylabel('Count')
@@ -68,8 +69,10 @@ if show_hists:
     plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram ')
     plt.legend()
     plt.show()
+    if save_plots:
+        fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
-    plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(8, 6), num="probs histogram cumulative")
     plt.hist(neg_preds, bins=101, cumulative=1, edgecolor='black', alpha=0.7, label='neg')
     plt.hist(pos_preds, bins=101, cumulative=-1, edgecolor='black', alpha=0.7, label='pos')
     plt.xlabel('Probability')
@@ -77,6 +80,8 @@ if show_hists:
     plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Cumulative histogram')
     plt.legend()
     plt.show()
+    if save_plots:
+        fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
 df["probs_anomaly"] = probs
 # Get misclassifications
@@ -136,7 +141,7 @@ err_df.sort_values(by="err_score", ascending=False, inplace=True)
 err_df.to_csv(clip_err_out)
 
 # statistics by categories
-cats = err_df["category"].unique().tolist()
+cats = natsorted(err_df["category"].unique().tolist())
 scores_cat = []
 scores_far_cat = []
 scores_ego = []
@@ -162,44 +167,47 @@ if save_plots:
     os.makedirs(out_figures_dir, exist_ok=True)
 
 fig = plt.figure(figsize=(8, 6), num="scores_categories")
-plt.bar(cats, scores_cat, color='blue', label='normal')
+plt.bar(cats, scores_cat, color='blue', label='all errs')
 plt.xlabel('categories')
-plt.ylabel('Count')
+plt.ylabel('mean err score')
 plt.xticks(rotation=45, ha='right')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
+plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Mean err scores by category')
 plt.legend()
 plt.show()
 if save_plots:
     fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
 fig = plt.figure(figsize=(8, 6), num="scores_far_categories")
-plt.bar(cats, scores_far_cat, color='blue', label='normal')
+plt.bar(cats, scores_cat, color='blue', label='all errs', alpha=0.7)
+plt.bar(cats, scores_far_cat, color='green', label='major', alpha=0.7)
 plt.xlabel('categories')
-plt.ylabel('Count')
+plt.ylabel('mean err score')
 plt.xticks(rotation=45, ha='right')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
+plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Mean err scores by category')
 plt.legend()
 plt.show()
 if save_plots:
     fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
 fig = plt.figure(figsize=(8, 6), num="scores_ego")
-plt.bar(scores_ego_labels, scores_ego, color='blue', label='normal')
-plt.xlabel('categories')
-plt.ylabel('Count')
+plt.bar(scores_ego_labels[:2], scores_ego[:2], color='orange', label='ego')
+plt.bar(scores_ego_labels[2:], scores_ego[2:], color='blue', label='no_ego')
+plt.xlabel('ego participation')
+plt.ylabel('mean err score')
 plt.xticks(rotation=45, ha='right')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
+plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Mean err scores by ego participation')
 plt.legend()
 plt.show()
 if save_plots:
     fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
 fig = plt.figure(figsize=(8, 6), num="scores_night")
-plt.bar(scores_night_labels, scores_night, color='blue', label='normal')
-plt.xlabel('categories')
-plt.ylabel('Count')
+plt.bar(scores_night_labels[:2], scores_night[:2], color='blue', label='night')
+plt.bar(scores_night_labels[2:], scores_night[2:], color='orange', label='day')
+plt.xlabel('day/night')
+plt.ylabel('mean err score')
 plt.xticks(rotation=45, ha='right')
-plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram categories')
+plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Mean err scores by day/night')
 plt.legend()
 plt.show()
 if save_plots:
@@ -216,8 +224,13 @@ nd_bad6 = len(err_df[err_df["err_far_score"] > 0.4])
 nd_bad7 = len(err_df[err_df["err_far_score"] > 0.3])
 nd_bad8 = len(err_df[err_df["err_far_score"] > 0.2])
 nd_bad9 = len(err_df[err_df["err_far_score"] > 0.1])
+# nd_bad0 = len(err_df[err_df["err_far_score"] > 0.05])
+# nd_bad0t = len(err_df[err_df["err_far_score"] > 0.03])
+nd_bad00 = len(err_df[err_df["err_score"] > 0.3])
+# nd_bad01 = len(err_df[err_df["err_score"] > 0.05])
+# nd_bad02 = len(err_df[err_df["err_score"] > 0.04])
 
-th = 0.5
+th = 0.3
 bad_clips = err_df[err_df["err_far_score"] > th]
 bad_clips.to_csv(os.path.splitext(clip_err_out)[0] + f"_bad{th}.csv")
 

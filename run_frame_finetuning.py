@@ -401,13 +401,20 @@ def main(args, ds_init):
 
     model.to(device)
 
+    # # Freeze specific layers
+    # for name, param in model.named_parameters():
+    #     if "blocks" in name and int(name.split(".")[1]) < 6:  # Freeze first 6 blocks
+    #         param.requires_grad = False
+    #     else:
+    #         param.requires_grad = True
+
     model_ema = None
     if args.model_ema:
         model_ema = ModelEma(
             model,
             decay=args.model_ema_decay,
             device='cpu' if args.model_ema_force_cpu else '',
-            resume='')
+            resume=args.resume)
         print("Using EMA with decay = %.8f" % args.model_ema_decay)
 
     model_without_ddp = model
@@ -526,8 +533,9 @@ def main(args, ds_init):
             #     with open(os.path.join(args.output_dir, "results.txt"), mode="a", encoding="utf-8") as f:
             #         f.write(json.dumps(log_stats) + "\n")
         exit(0)
-        
 
+    with open(os.path.join(args.output_dir, "params.json"), mode="w") as f:
+        json.dump(vars(args), f, indent=2)
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     max_accuracy = 0.0
@@ -585,13 +593,14 @@ def main(args, ds_init):
                     utils.save_model(
                         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
                         loss_scaler=loss_scaler, epoch="bestap", model_ema=model_ema)
-            # epoch_save_list = (1, 3, 4, 5, 7, 15)
-            # if epoch in epoch_save_list:
-            #     utils.save_model(
-            #         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-            #         loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema
-            #     )
-
+            #
+            epoch_save_list = (1, 3, 4, 5, 7, 15)
+            if epoch in epoch_save_list:
+                utils.save_model(
+                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                    loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema
+                )
+            #
             print(f'Max accuracy: {max_accuracy:.2f}%')
             if log_writer is not None:
                 log_writer.update(val_acc=test_stats_['acc'], head="val", step=epoch)

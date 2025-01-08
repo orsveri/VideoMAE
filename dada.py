@@ -203,7 +203,8 @@ class FrameClsDataset_DADA(Dataset):
                     smoothed_label_list.append(smoothed_label)
                     index_list.append(index)
                     ttc_list.append(ttc)
-                extra_info = {"ttc": ttc_list, "smoothed_labels": smoothed_label_list}
+                extra_info = [{"ttc": ttc_item, "smoothed_labels": slab_item} for ttc_item, slab_item in
+                              zip(ttc_list, smoothed_label_list)]
                 return frame_list, label_list, index_list, extra_info
             else:
                 buffer = self._aug_frame(buffer, args)

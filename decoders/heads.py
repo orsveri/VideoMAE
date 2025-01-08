@@ -43,6 +43,73 @@ class ConvUpsampleHead(nn.Module):
         return depth_map
 
 
+class SimplePredictionHead(nn.Module):
+    def __init__(self, out_channels, query_dim, num_queries):
+        """
+        Args:
+            query_dim (int): Dimension of each query embedding (output of DETR decoder).
+            num_queries (int): Number of learnable query vectors (N).
+        """
+        super(SimplePredictionHead, self).__init__()
+        # Fully connected layers for final prediction
+        self.fc = nn.Sequential(
+            nn.Linear(query_dim * num_queries, 128),  # Aggregate all queries into a smaller vector
+            nn.ReLU(inplace=True),
+            nn.Linear(128, out_channels)  # Output the final scalar prediction
+        )
+
+    def forward(self, queries):
+        """
+        Args:
+            queries (torch.Tensor): Query embeddings of shape (batch_size, num_queries, query_dim).
+
+        Returns:
+            torch.Tensor: Scalar predictions of shape (batch_size, 1).
+        """
+        # Flatten the queries into a single feature vector per sample
+        batch_size, num_queries, query_dim = queries.size()
+        flattened = queries.view(batch_size, -1)  # Shape: (batch_size, num_queries * query_dim)
+
+        # Apply the fully connected layers
+        output = self.fc(flattened)  # Shape: (batch_size, 1)
+        return output
+
+
+class AttentionPredictionHead(nn.Module):
+    def __init__(self, out_channels, query_dim, num_queries):
+        """
+        Args:
+            query_dim (int): Dimension of each query embedding (output of DETR decoder).
+            num_queries (int): Number of learnable query vectors (N).
+        """
+        super(AttentionPredictionHead, self).__init__()
+        self.attention_weights = nn.Linear(query_dim, 1)  # Learnable weights for each query
+        self.fc = nn.Sequential(
+            nn.Linear(query_dim, 128),  # Reduce to a smaller feature vector
+            nn.ReLU(inplace=True),
+            nn.Linear(128, out_channels)  # Final scalar prediction
+        )
+
+    def forward(self, queries):
+        """
+        Args:
+            queries (torch.Tensor): Query embeddings of shape (batch_size, num_queries, query_dim).
+
+        Returns:
+            torch.Tensor: Scalar predictions of shape (batch_size, 1).
+        """
+        # Compute attention weights for each query
+        attention_scores = self.attention_weights(queries)  # Shape: (batch_size, num_queries, 1)
+        attention_scores = torch.softmax(attention_scores, dim=1)  # Normalize scores across queries
+
+        # Apply attention to the queries
+        weighted_queries = (queries * attention_scores).sum(dim=1)  # Shape: (batch_size, query_dim)
+
+        # Apply the fully connected layers
+        output = self.fc(weighted_queries)  # Shape: (batch_size, 1)
+        return output
+
+
 # Example usage:
 if __name__ == "__main__":
     B = 2

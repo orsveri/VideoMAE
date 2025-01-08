@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Sequence, Optional
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
@@ -25,7 +25,8 @@ def threshold_curve_plots(
         y_label: str,
         plot_name: str,
         score: bool = False,
-        to_img: bool = False
+        to_img: bool = False,
+        curve_type_correction: Optional[str] = None
 ):
     """
     Plot a threshold curve and optionally calculate the area under the curve (AUC).
@@ -39,6 +40,7 @@ def threshold_curve_plots(
     - plot_name: Title of the plot
     - score: Boolean to indicate if AUC should be calculated and displayed (default is False)
     - to_img: Boolean to indicate if convert the resulting plot to image (default is False)
+    - curve_type_correction: str to indicate correction type, 'roc' or 'pr'.
     """
     assert len(x_values) == len(y_values) == len(thresholds)
 
@@ -53,6 +55,18 @@ def threshold_curve_plots(
     y_values = y_values[unique_indices]
     thresholds = thresholds[unique_indices]
     x_values = unique_x_values
+
+    if curve_type_correction is not None:
+        if curve_type_correction == "roc":
+            y0, y1 = 0., 1.
+        elif curve_type_correction == "pr":
+            y0, y1 = 1., 0.
+        else:
+            raise ValueError
+        x_values = np.insert(x_values, 0, 0.)
+        x_values = np.append(x_values, 1.)
+        y_values = np.insert(y_values, 0, y0)
+        y_values = np.append(y_values, y1)
 
     plt.rcParams['figure.dpi'] = 100
     plt.rcParams['savefig.dpi'] = 100
@@ -87,7 +101,7 @@ def threshold_curve_plots(
 
     if score and x_values.shape[0] > 1:
         auc_score = auc(x_values, y_values)
-        ax.text(0.80, 0.65, f'AUC: {auc_score:.2f}', transform=ax.transAxes, fontsize=12, ha='left')
+        ax.text(0.40, 0.20, f'AUC: {auc_score:.2f}', transform=ax.transAxes, fontsize=12, ha='left')
 
     if to_img:
         fig = fig_to_cv2_image(fig)

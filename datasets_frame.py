@@ -1,13 +1,11 @@
 import os
 from torchvision import transforms
 
-from dada import FrameClsDataset_DADA
 from transforms import *
 from masking_generator import TubeMaskingGenerator
 from kinetics import VideoClsDataset, VideoMAE
 from dota import FrameClsDataset
-#from dada import FrameClsDataset_DADA
-from ssv2 import SSVideoClsDataset
+from dada import FrameClsDataset_DADA
 
 
 class DataAugmentationForVideoMAE(object):
@@ -98,7 +96,6 @@ def build_frame_dataset(is_train, test_mode, args):
         if is_train is True:
             mode = 'train'
             anno_path = "DADA2K_my_split/training.txt"
-            raise NotImplementedError()
         elif test_mode is True:
             mode = 'test'
             anno_path = "DADA2K_my_split/validation.txt"

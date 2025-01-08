@@ -30,7 +30,7 @@ colors = {
     'black': 'k',
 }
 
-FPS = 10
+FPS = 30
 
 
 class VisFrameConstructor():
@@ -49,7 +49,7 @@ class VisFrameConstructor():
     curr_lw = 3
     risk_threshold = 0.5
 
-    def init_plot_data(self, preds, labels, empty_start_preds=0, empty_start_labels=0):
+    def init_plot_data(self, preds, labels, empty_start_preds=0, empty_start_labels=0, toa=None):
         timeframes_preds = [(item+empty_start_preds)/FPS for item in list(range(len(preds)))]
         timeframes_labels = [(item + empty_start_labels) / FPS for item in list(range(len(labels)))]
 
@@ -78,6 +78,8 @@ class VisFrameConstructor():
             unsafe = np.array(labels).astype(bool)
             for sd in subplots_data:
                 sd["fill_between"] = {"x": timeframes_labels, "where": unsafe, "color": colors["red_l"]}
+        if toa is not None:
+            subplots_data[0]["toa"] = toa / FPS
 
         self.subplots_data = subplots_data
         self.video_title = ""
@@ -151,6 +153,11 @@ class VisFrameConstructor():
                 ax.fill_between(
                     fill_data["x"], ymin, ymax, where=fill_data["where"], color=fill_data["color"],
                     alpha=self.transparency
+                )
+            if "toa" in sp_data and sp_data["toa"] is not None:
+                ax.vlines(
+                    x=sp_data["toa"], ymin=ymin, ymax=ymax,
+                    colors='red', linewidth=self.curr_lw, linestyles="-", label="ToA"
                 )
             if curr_frame is not None:
                 ax.vlines(
@@ -240,34 +247,40 @@ def get_image_clip(images, cur_idx, seq_length, fps=FPS):
     return image_clip
 
 
-def save_video_dota(clip_dir, probs, labels, filenames, seq_length, out_path, img_ext = ".jpg"):
+def save_video_dada(clip_dir, probs, anno, filenames, seq_length, out_path, img_ext = ".jpg"):
     #
-    if os.path.exists(out_path):
-        return
+    # if os.path.exists(out_path):
+    #     return
     # 1. Find unused labels in the beginning of the clip
-    anno_path = os.path.join(os.path.dirname(os.path.dirname(clip_dir)), "dataset", "annotations", f"{os.path.basename(clip_dir)}.json")
-    with open(anno_path) as f:
-        anno = json.load(f)
-        # sort is not required since we read already sorted timesteps from annotations
-        all_timesteps = natsorted([int(os.path.splitext(os.path.basename(frame_label["image_path"]))[0]) for frame_label
-                               in anno["labels"]])
-        all_labels = [1 if int(frame_label["accident_id"]) > 0 else 0 for frame_label in anno["labels"]]
+    clip_subfolder = os.path.basename(clip_dir)
+    clip_type = os.path.basename(os.path.dirname(clip_dir))
+    row = anno[(anno["video"] == int(clip_subfolder)) & (anno["type"] == int(clip_type))]
+    all_filenames = []
+    with zipfile.ZipFile(os.path.join(clip_dir, "images.zip"), 'r') as zipf:
+        deb = zipf.namelist()
+        all_filenames = natsorted([img for img in zipf.namelist() if img.endswith(img_ext)])
+    all_timesteps = natsorted([int(os.path.splitext(f)[0].split("_")[-1]) for f in all_filenames])
+    if_acc_video = int(row["whether an accident occurred (1/0)"])
+    if if_acc_video:
+        st = int(row["abnormal start frame"])
+        en = int(row["abnormal end frame"])
+        toa = int(row["accident frame"])
+        all_labels = [1 if st <= t <= en else 0 for t in all_timesteps]
+    else:
+        toa = None
+        all_labels = [0 for t in all_timesteps]
     # 2. Read frames to form plots
     frames = []
-    all_filenames = []
     zip_file_path = os.path.join(clip_dir, "images.zip")
-    with zipfile.ZipFile(zip_file_path, 'r') as archive:
-        all_filenames = natsorted([img for img in archive.namelist() if img.endswith(img_ext)])
-        intersection = set(all_filenames).intersection(set(filenames))
-        assert natsorted(list(intersection)) == filenames, f"len filenames: {len(intersection)}, len intersection {len(filenames)}"
-        last_labeled_id = all_filenames.index(f"{str(all_timesteps[-1]).zfill(6)}.jpg")
-        all_filenames = all_filenames[:last_labeled_id+1]
-        # 2. Prepare plot template
-        vis = VisFrameConstructor()
-        vis.init_plot_data(preds=probs, labels=all_labels, empty_start_preds=15, empty_start_labels=0)
-        # 2. Read all images and format them
+    intersection = set(all_filenames).intersection(set(filenames))
+    assert natsorted(list(intersection)) == filenames, f"len filenames: {len(intersection)}, len intersection {len(filenames)}"
+    # 2. Prepare plot template
+    vis = VisFrameConstructor()
+    vis.init_plot_data(preds=probs, labels=all_labels, empty_start_preds=15, empty_start_labels=0, toa=toa)
+    # 2. Read all images and format them
+    with zipfile.ZipFile(zip_file_path, 'r') as zipf:
         for fn in all_filenames:
-            with archive.open(fn) as img_file:
+            with zipf.open(fn) as img_file:
                 img_data = img_file.read()
                 img = cv2.imdecode(np.frombuffer(img_data, np.uint8), cv2.IMREAD_COLOR)
                 img = cv2.resize(img, (0, 0), fx=0.4, fy=0.4, interpolation=cv2.INTER_CUBIC)
@@ -292,7 +305,7 @@ def save_video_dota(clip_dir, probs, labels, filenames, seq_length, out_path, im
             writer = cv2.VideoWriter(
                 out_path,
                 cv2.VideoWriter_fourcc(*'MP4V'),
-                10.,
+                FPS,
                 (img.shape[1], img.shape[0])
             )
         writer.write(img)
@@ -300,30 +313,23 @@ def save_video_dota(clip_dir, probs, labels, filenames, seq_length, out_path, im
     writer.release()
 
 
-ckpt = 3
-tag = "_train"  # "_train
+ckpt = 1
+tag = "val"  # "_train
 version = "crossentropy"
-report_csv_clipnames = f"/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/{version}/checkpoint-{ckpt}/OUT{tag}_fixttc/err_report_bad0.4.csv"
-predictions = f"/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/{version}/checkpoint-{ckpt}/OUT{tag}_fixttc/predictions_0.csv"
-out_folder = f"/mnt/experiments/sorlova/AITHENA/NewStage/VideoMAE_results/auroc_behaviour_vis/{version}/checkpoint-{ckpt}_OUT{tag}_fixed04"
-#video_dir = "/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000/frames" # "/mnt/experiments/sorlova/datasets/DoTA/frames"
-video_dir = "/mnt/experiments/sorlova/datasets/DoTA/frames"
+report_csv_clipnames = f"/home/sorlova/repos/NewStart/VideoMAE/logs/clean_datasets/DADA2K/b32x2x1gpu_ce_{tag.upper()}/checkpoint-{ckpt}/OUT{tag}/err_report_bad0.1.csv"
+predictions = f"/home/sorlova/repos/NewStart/VideoMAE/logs/clean_datasets/DADA2K/b32x2x1gpu_ce_{tag.upper()}/checkpoint-{ckpt}/OUT{tag}/predictions_0.csv"
+out_folder = f"/mnt/experiments/sorlova/AITHENA/NewStage/VideoMAE_results/auroc_behaviour_vis/crossentropy/cleaning/DADA_{tag}_ckpt-{ckpt}_bad01"
+video_dir = "/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000/frames"
 seq_length = 16
 
 # ============
 clip_df = pd.read_csv(report_csv_clipnames)
 clip_names = clip_df["clip"]
 
-# clip_names = ['3u_CIo9IaWo_002692', '88LcRU7uEFE_001348', '88LcRU7uEFE_003534', 'Hx8FMhmdOQU_005071', 'IOoVklIZLMw_005100',
-#               'JkYzYrJpSoQ_004958', 'LfKfK4I5RPE_004721', 'O9uvBFovKj8_004288', 'OWtbKblBOKI_002215', 'PfJ2CudpCgE_000495',
-#               'Q7VBPeGwJWw_001964', 'Q7VBPeGwJWw_002431', 'QERvirE3S5s_004340', 'Sihe6aeyLHg_006155', 'T7TkJVmGyts_003165',
-#               'T89zSiaMNgM_003762', 'TNZv-NBcV5U_002002', 'TNZv-NBcV5U_002242', 'TNZv-NBcV5U_003566', 'TNZv-NBcV5U_004020',
-#               'TNZv-NBcV5U_004857', 'Tsl84N96WM8_000341', 'UKBuDqU8qTM_000481', 'V3--0ubJkNE_003878',    # 'UKBuDqU8qTM_000481_example_other'
-#               'Vtpe3HAIEm4_005072', 'YBEYOS3A3Ic_004656', 'YBEYOS3A3Ic_005673', 'Z9K13eBUwJM_001323', 'mrIFkGZbNjc_003577',
-#               'bFGmOp9H3MA_003301', 'f482qwPz7ns_004500', 'fWJbp43k644_002866', 'gXezhrOijmQ_005750', 'ieP36TLihGM_000754',
-#               'kjVywUi1WK4_003502', 'qzMjfBx1KI0_003477', 'uO2zGO5ydBc_002720', 'uO2zGO5ydBc_005037', 'ujVRDgGVzlQ_001536',
-#               'vdLn-qswnRo_002696', 'xVfPBzDnI2Q_000760', 'xpOyD-qrQUw_003463']
-#clip_names = ["88LcRU7uEFE_003534"]
+val1_clip_names = ['3/013', '3/017', '5/027', '5/083', '6/058', '6/072', '8/016', '8/034', '8/036', '8/040', '11/101', '11/108', '11/145', '11/177', '11/245', '12/016', '14/027', '18/004', '18/009', '24/001', '37/059', '37/068', '37/081', '38/050', '40/008', '41/010', '42/005', '43/030', '43/055', '43/106', '43/136', '43/190', '43/213', '48/032', '50/083', '50/100', '50/130', '50/135', '50/155', '50/197', '50/210', '56/040', '57/025', '57/027']
+train1_clip_names = ['5/041', '5/057', '5/103', '6/083', '10/113', '10/137', '10/155', '11/077', '11/146', '11/169', '12/002', '12/019', '13/008', '14/001', '21/004', '23/001', '24/007', '24/011', '24/016', '30/001', '36/001', '36/002', '37/045', '37/075', '38/008', '38/012', '38/031', '38/034', '39/023', '41/004', '41/006', '41/009', '42/002', '43/031', '43/054', '43/066', '43/097', '43/104', '43/113', '43/134', '43/156', '43/167', '43/169', '43/204', '43/207', '43/214', '44/001', '44/002', '48/006', '48/022', '48/024', '48/035', '48/051', '48/053', '48/054', '48/072', '48/079', '49/010', '49/023', '49/030', '50/038', '50/049', '50/071', '50/080', '50/088', '50/108', '50/117', '50/122', '50/132', '50/136', '50/169', '50/188', '50/211', '53/011', '56/019', '57/007', '57/009', '57/024']
+clip_names = val1_clip_names
+
 
 for clip_name in tqdm(clip_names):
     df = pd.read_csv(predictions)
@@ -333,13 +339,16 @@ for clip_name in tqdm(clip_names):
     logits_tensor = torch.tensor(logits, dtype=torch.float32)
     probabilities = torch.nn.functional.softmax(logits_tensor, dim=1).numpy()
 
-    save_video_dota(
+    anno_path = os.path.join("/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000/annotation/full_anno.csv")
+    anno = pd.read_csv(anno_path)
+
+    save_video_dada(
         clip_dir=os.path.join(video_dir, clip_name),
         probs=probabilities[:, 1],
-        labels=clip_data["label"].values,
+        anno=anno,
         filenames=clip_data["filename"].tolist(),
         seq_length=seq_length,
-        out_path=os.path.join(out_folder, clip_name + ".mp4"),
-        img_ext=".jpg"
+        out_path=os.path.join(out_folder, clip_name.replace('/', '_') + ".mp4"),
+        img_ext=".png"
     )
 

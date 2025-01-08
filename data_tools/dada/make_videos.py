@@ -152,12 +152,12 @@ def save_video_zip(clip_name, score, out_dir, labels, preds, filenames=None, dat
         print(f"Video saved as {out_name}")
 
 
-predictions = "logs/dota_fixloss/focal_1gpu/OUT_DoTA/predictions_0.csv"
-out_folder = "logs/dota_fixloss/focal_1gpu/OUT_DoTA/"
-
-df = pd.read_csv(predictions)
-
-find_incorrect_clips(df_data=df, out_dir=out_folder, save_histograms=False)
+# predictions = "logs/dota_fixloss/focal_1gpu/OUT_DoTA/predictions_0.csv"
+# out_folder = "logs/dota_fixloss/focal_1gpu/OUT_DoTA/"
+#
+# df = pd.read_csv(predictions)
+#
+# find_incorrect_clips(df_data=df, out_dir=out_folder, save_histograms=False)
 
 
 

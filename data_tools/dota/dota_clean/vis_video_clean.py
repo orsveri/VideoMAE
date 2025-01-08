@@ -300,12 +300,12 @@ def save_video_dota(clip_dir, probs, labels, filenames, seq_length, out_path, im
     writer.release()
 
 
-ckpt = 3
-tag = "_train"  # "_train
+ckpt = 15
+tag = "allval"  # "_train
 version = "crossentropy"
-report_csv_clipnames = f"/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/{version}/checkpoint-{ckpt}/OUT{tag}_fixttc/err_report_bad0.4.csv"
-predictions = f"/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/{version}/checkpoint-{ckpt}/OUT{tag}_fixttc/predictions_0.csv"
-out_folder = f"/mnt/experiments/sorlova/AITHENA/NewStage/VideoMAE_results/auroc_behaviour_vis/{version}/checkpoint-{ckpt}_OUT{tag}_fixed04"
+report_csv_clipnames = f"/home/sorlova/repos/NewStart/VideoMAE/logs/clean_datasets/DoTA/b32x2x1gpu_ce_VAL/checkpoint-{ckpt}/OUTval/err_report_bad0.025.csv"
+predictions = f"/home/sorlova/repos/NewStart/VideoMAE/logs/clean_datasets/DoTA/b32x2x1gpu_ce_VAL/checkpoint-{ckpt}/OUTval/predictions_0.csv"
+out_folder = f"/mnt/experiments/sorlova/AITHENA/NewStage/VideoMAE_results/auroc_behaviour_vis/crossentropy/cleaning/{tag}_ckpt-{ckpt}_bad0025"
 #video_dir = "/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000/frames" # "/mnt/experiments/sorlova/datasets/DoTA/frames"
 video_dir = "/mnt/experiments/sorlova/datasets/DoTA/frames"
 seq_length = 16
@@ -314,16 +314,6 @@ seq_length = 16
 clip_df = pd.read_csv(report_csv_clipnames)
 clip_names = clip_df["clip"]
 
-# clip_names = ['3u_CIo9IaWo_002692', '88LcRU7uEFE_001348', '88LcRU7uEFE_003534', 'Hx8FMhmdOQU_005071', 'IOoVklIZLMw_005100',
-#               'JkYzYrJpSoQ_004958', 'LfKfK4I5RPE_004721', 'O9uvBFovKj8_004288', 'OWtbKblBOKI_002215', 'PfJ2CudpCgE_000495',
-#               'Q7VBPeGwJWw_001964', 'Q7VBPeGwJWw_002431', 'QERvirE3S5s_004340', 'Sihe6aeyLHg_006155', 'T7TkJVmGyts_003165',
-#               'T89zSiaMNgM_003762', 'TNZv-NBcV5U_002002', 'TNZv-NBcV5U_002242', 'TNZv-NBcV5U_003566', 'TNZv-NBcV5U_004020',
-#               'TNZv-NBcV5U_004857', 'Tsl84N96WM8_000341', 'UKBuDqU8qTM_000481', 'V3--0ubJkNE_003878',    # 'UKBuDqU8qTM_000481_example_other'
-#               'Vtpe3HAIEm4_005072', 'YBEYOS3A3Ic_004656', 'YBEYOS3A3Ic_005673', 'Z9K13eBUwJM_001323', 'mrIFkGZbNjc_003577',
-#               'bFGmOp9H3MA_003301', 'f482qwPz7ns_004500', 'fWJbp43k644_002866', 'gXezhrOijmQ_005750', 'ieP36TLihGM_000754',
-#               'kjVywUi1WK4_003502', 'qzMjfBx1KI0_003477', 'uO2zGO5ydBc_002720', 'uO2zGO5ydBc_005037', 'ujVRDgGVzlQ_001536',
-#               'vdLn-qswnRo_002696', 'xVfPBzDnI2Q_000760', 'xpOyD-qrQUw_003463']
-#clip_names = ["88LcRU7uEFE_003534"]
 
 for clip_name in tqdm(clip_names):
     df = pd.read_csv(predictions)

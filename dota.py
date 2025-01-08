@@ -155,66 +155,6 @@ class FrameClsDataset(Dataset):
         self.ttc = ttc
         self._smoothed_label_array = smoothed_label_array
 
-    # # original version
-    # def __getitem__(self, index):
-    #
-    #     if self.mode == 'train':
-    #         args = self.args
-    #         sample = self.dataset_samples[index]
-    #         buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)  # T H W C
-    #         if len(buffer) == 0:
-    #             while len(buffer) == 0:
-    #                 warnings.warn("video {} not correctly loaded during training".format(sample))
-    #                 index = np.random.randint(self.__len__())
-    #                 sample = self.dataset_samples[index]
-    #                 buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)
-    #
-    #         if args.num_sample > 1:
-    #             frame_list = []
-    #             label_list = []
-    #             index_list = []
-    #             ttc_list = []
-    #             for _ in range(args.num_sample):
-    #                 new_frames = self._aug_frame(buffer, args)
-    #                 label = self.label_array[index]
-    #                 ttc = self.ttc[index]
-    #                 frame_list.append(new_frames)
-    #                 label_list.append(label)
-    #                 index_list.append(index)
-    #                 ttc_list.append(ttc)
-    #             return frame_list, label_list, index_list, ttc_list
-    #         else:
-    #             buffer = self._aug_frame(buffer, args)
-    #
-    #         return buffer, self.label_array[index], index, self.ttc[index]
-    #
-    #     elif self.mode == 'validation':
-    #         sample = self.dataset_samples[index]
-    #         buffer, _, __ = self.load_images(sample, final_resize=True)
-    #         if len(buffer) == 0:
-    #             while len(buffer) == 0:
-    #                 warnings.warn("video {} not correctly loaded during validation".format(sample))
-    #                 index = np.random.randint(self.__len__())
-    #                 sample = self.dataset_samples[index]
-    #                 buffer, _, __ = self.load_images(sample, final_resize=True)
-    #         buffer = self.data_transform(buffer)
-    #         return buffer, self.label_array[index], index, self.ttc[index]
-    #
-    #     elif self.mode == 'test':
-    #         sample = self.test_dataset[index]
-    #         buffer, clip_name, frame_name = self.load_images(sample, final_resize=True)
-    #         while len(buffer) == 0:
-    #             warnings.warn("video {} not found during testing".format(str(self.test_dataset[index])))
-    #             index = np.random.randint(self.__len__())
-    #             sample = self.test_dataset[index]
-    #             buffer, clip_name, frame_name = self.load_images(sample, final_resize=True)
-    #         buffer = self.data_transform(buffer)
-    #         extra_info = {"ttc": self.ttc[index], "clip": clip_name, "frame": frame_name}
-    #         return buffer, self.test_label_array[index], index, self.ttc[index]
-    #     else:
-    #         raise NameError('mode {} unkown'.format(self.mode))
-
-
     def __getitem__(self, index):
 
         if self.mode == 'train':
@@ -244,7 +184,7 @@ class FrameClsDataset(Dataset):
                     smoothed_label_list.append(smoothed_label)
                     index_list.append(index)
                     ttc_list.append(ttc)
-                extra_info = {"ttc": ttc_list, "smoothed_labels": smoothed_label_list}
+                extra_info = [{"ttc": ttc_item, "smoothed_labels": slab_item} for ttc_item, slab_item in zip(ttc_list, smoothed_label_list)]
                 return frame_list, label_list, index_list, extra_info
             else:
                 buffer = self._aug_frame(buffer, args)

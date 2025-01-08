@@ -140,7 +140,7 @@ err_df.sort_values(by="err_score", ascending=False, inplace=True)
 err_df.to_csv(clip_err_out)
 
 # statistics by categories
-cats = err_df["category"].unique().tolist()
+cats = natsorted(err_df["category"].unique().tolist())
 scores_cat = []
 scores_far_cat = []
 scores_ego = []
