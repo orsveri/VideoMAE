@@ -16,11 +16,11 @@ from random_erasing import RandomErasing
 import video_transforms as video_transforms 
 import volume_transforms as volume_transforms
 
-from dataset.sequencing import RegularSequencer, UnsafeOverlapSequencer
+from dataset.sequencing import RegularSequencer, RegularSequencerWithStart
 from dataset.data_utils import smooth_labels, compute_time_vector
 
 
-class FrameClsDataset(Dataset):
+class FrameClsDataset_DoTA(Dataset):
     """Load your own video classification dataset."""
 
     def __init__(self, anno_path, data_path, mode='train',
@@ -491,4 +491,218 @@ def tensor_normalize(tensor, mean, std):
     tensor = tensor - mean
     tensor = tensor / std
     return tensor
+
+
+class VideoMAE_DoTA(torch.utils.data.Dataset):
+    """Load your own video classification dataset.
+    Parameters
+    ----------
+    root : str, required.
+        Path to the root folder storing the dataset.
+    setting : str, required.
+        A text file describing the dataset, each line per video sample.
+        There are three items in each line: (1) video path; (2) video length and (3) video label.
+    train : bool, default True.
+        Whether to load the training or validation set.
+    test_mode : bool, default False.
+        Whether to perform evaluation on the test set.
+        Usually there is three-crop or ten-crop evaluation strategy involved.
+    name_pattern : str, default None.
+        The naming pattern of the decoded video frames.
+        For example, img_00012.jpg.
+    video_ext : str, default 'mp4'.
+        If video_loader is set to True, please specify the video format accordinly.
+    is_color : bool, default True.
+        Whether the loaded image is color or grayscale.
+    modality : str, default 'rgb'.
+        Input modalities, we support only rgb video frames for now.
+        Will add support for rgb difference image and optical flow image later.
+    num_segments : int, default 1.
+        Number of segments to evenly divide the video into clips.
+        A useful technique to obtain global video-level information.
+        Limin Wang, etal, Temporal Segment Networks: Towards Good Practices for Deep Action Recognition, ECCV 2016.
+    num_crop : int, default 1.
+        Number of crops for each image. default is 1.
+        Common choices are three crops and ten crops during evaluation.
+    new_length : int, default 1.
+        The length of input video clip. Default is a single image, but it can be multiple video frames.
+        For example, new_length=16 means we will extract a video clip of consecutive 16 frames.
+    new_step : int, default 1.
+        Temporal sampling rate. For example, new_step=1 means we will extract a video clip of consecutive frames.
+        new_step=2 means we will extract a video clip of every other frame.
+    temporal_jitter : bool, default False.
+        Whether to temporally jitter if new_step > 1.
+    video_loader : bool, default False.
+        Whether to use video loader to load data.
+    use_decord : bool, default True.
+        Whether to use Decord video loader to load data. Otherwise use mmcv video loader.
+    transform : function, default None.
+        A function that takes data and label and transforms them.
+    data_aug : str, default 'v1'.
+        Different types of data augmentation auto. Supports v1, v2, v3 and v4.
+    lazy_init : bool, default False.
+        If set to True, build a dataset instance without loading any dataset.
+    """
+
+    def __init__(self,
+                 anno_path,
+                 data_path,
+                 train=True,
+                 test_mode=False,
+                 name_pattern='img_%05d.jpg',
+                 video_ext='mp4',
+                 is_color=True,
+                 view_len=1,
+                 view_step=1,
+                 orig_fps=10,
+                 target_fps=10,
+                 transform=None,
+                 temporal_jitter=False,
+                 video_loader=False,
+                 use_decord=False,
+                 lazy_init=False,
+                 args=None
+                 ):
+
+        super(VideoMAE_DoTA, self).__init__()
+        self.anno_path = anno_path
+        self.data_path = data_path
+        self.train = train
+        self.test_mode = test_mode
+        self.is_color = is_color
+        self.view_len = view_len
+        self.view_step = view_step
+        self.ofps = orig_fps
+        self.tfps = target_fps
+        self.temporal_jitter = temporal_jitter
+        self.name_pattern = name_pattern
+        self.video_loader = video_loader
+        self.video_ext = video_ext
+        self.use_decord = use_decord
+        self.transform = transform
+        self.lazy_init = lazy_init
+        self.ttc_TT = args.ttc_TT if hasattr(args, "ttc_TT") else 2.
+        self.ttc_TA = args.ttc_TA if hasattr(args, "ttc_TA") else 1.
+        # TODO: fill in parameters
+        self.sequencer = RegularSequencerWithStart(seq_frequency=self.tfps, seq_length=self.view_len, step=self.view_step)
+
+        if not self.lazy_init:
+            self._read_anno()
+            self._prepare_views()
+            if len(self.dataset_samples) == 0:
+                raise RuntimeError("Found 0 video clips in subfolders of: " + data_path)
+
+    def _read_anno(self):
+        clip_names = None
+        clip_timesteps = []
+        clip_binary_labels = []
+        clip_cat_labels = []
+        clip_ego = []
+        clip_night = []
+        clip_ttc = []
+        clip_smoothed_labels = []
+
+        with open(os.path.join(self.data_path, "dataset", self.anno_path), 'r') as file:
+            clip_names = [line.rstrip() for line in file]
+        for clip in clip_names:
+            clip_anno_path = os.path.join(self.data_path, "dataset", "annotations", f"{clip}.json")
+            with open(clip_anno_path) as f:
+                anno = json.load(f)
+                # sort is not required since we read already sorted timesteps from annotations
+                timesteps = natsorted([int(os.path.splitext(os.path.basename(frame_label["image_path"]))[0]) for frame_label
+                                  in anno["labels"]])
+                cat_labels = [int(frame_label["accident_id"]) for frame_label in anno["labels"]]
+                if_ego = anno["ego_involve"]
+                if_night = anno["night"]
+            binary_labels = [1 if l > 0 else 0 for l in cat_labels]
+            ttc = compute_time_vector(binary_labels, fps=self.ofps, TT=self.ttc_TT, TA=self.ttc_TA)
+            smoothed_labels = smooth_labels(labels=torch.Tensor(binary_labels), time_vector=ttc, before_limit=self.ttc_TT, after_limit=self.ttc_TA)
+
+            clip_timesteps.append(timesteps)
+            clip_binary_labels.append(binary_labels)
+            clip_cat_labels.append(cat_labels)
+            clip_ego.append(if_ego)
+            clip_night.append(if_night)
+            clip_ttc.append(ttc)
+            clip_smoothed_labels.append(smoothed_labels)
+
+        assert len(clip_names) == len(clip_timesteps) == len(clip_binary_labels) == len(clip_cat_labels)
+        self.clip_names = clip_names
+        self.clip_timesteps = clip_timesteps
+        self.clip_bin_labels = clip_binary_labels
+        self.clip_cat_labels = clip_cat_labels
+        self.clip_ego = clip_ego
+        self.clip_night = clip_night
+        self.clip_ttc = clip_ttc
+        self.clip_smoothed_labels = clip_smoothed_labels
+
+    def _prepare_views(self):
+        dataset_sequences = []
+        label_array = []
+        ttc = []
+        smoothed_label_array = []
+        sequencer = RegularSequencer(seq_frequency=self.tfps, seq_length=self.view_len, step=self.view_step)
+        N = len(self.clip_names)
+        for i in range(N):
+            timesteps = self.clip_timesteps[i]
+            sequences = sequencer.get_sequences(timesteps_nb=len(timesteps), input_frequency=self.ofps)
+            if sequences is None:
+                continue
+            dataset_sequences.extend([(i, seq) for seq in sequences])
+            label_array.extend([self.clip_bin_labels[i][seq[-1]] for seq in sequences])
+            smoothed_label_array.extend([self.clip_smoothed_labels[i][seq[-1]] for seq in sequences])
+            ttc.extend([self.clip_ttc[i][seq[-1]] for seq in sequences])
+        self.dataset_samples = dataset_sequences
+        self._label_array = label_array
+        self.ttc = ttc
+        self._smoothed_label_array = smoothed_label_array
+
+    def load_images(self, dataset_sample, final_resize=False, resize_scale=None):
+        clip_id, frame_seq = dataset_sample
+        clip_name = self.clip_names[clip_id]
+        timesteps = [self.clip_timesteps[clip_id][idx] for idx in frame_seq]
+        filenames = [f"{str(ts).zfill(6)}.jpg" for ts in timesteps]
+        view = []
+        with zipfile.ZipFile(os.path.join(self.data_path, "frames", clip_name, "images.zip"), 'r') as zipf:
+            for fname in filenames:
+                with zipf.open(fname) as file:
+                    file_bytes = np.frombuffer(file.read(), np.uint8)
+                    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                if img is None:
+                    print("Image doesn't exist! ", fname)
+                    exit(1)
+                img = cv2.resize(img, dsize=(0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_CUBIC)
+                # if final_resize:
+                #     img = cv2.resize(img, dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
+                # elif resize_scale is not None:
+                #     short_side = min(img.shape[:2])
+                #     target_side = self.crop_size * resize_scale
+                #     k = target_side / short_side
+                #     img = cv2.resize(img, dsize=(0,0), fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
+                # else:
+                #     raise ValueError
+                # Convert OpenCV image (numpy) to PIL.Image and append to view
+                img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                view.append(img)
+        #view = np.stack(view, axis=0)
+        return view, clip_name, filenames[-1]
+
+    def __getitem__(self, index):
+        sample = self.dataset_samples[index]
+        if self.video_loader:
+            buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)  # T H W C
+            if len(buffer) == 0:
+                while len(buffer) == 0:
+                    warnings.warn("video {} not correctly loaded during training".format(sample))
+                    index = np.random.randint(self.__len__())
+                    sample = self.dataset_samples[index]
+                    buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)
+
+        process_data, mask = self.transform((buffer, None))  # T*C,H,W
+        # T*C,H,W -> T,C,H,W -> C,T,H,W
+        process_data = process_data.view((self.view_len, 3) + process_data.size()[-2:]).transpose(0, 1)
+        return (process_data, mask)
+
+    def __len__(self):
+        return len(self.dataset_samples)
 

@@ -3,8 +3,7 @@ from torchvision import transforms
 
 from transforms import *
 from masking_generator import TubeMaskingGenerator
-from kinetics import VideoClsDataset, VideoMAE
-from dota import FrameClsDataset
+from dota import FrameClsDataset_DoTA, VideoMAE_DoTA
 from dada import FrameClsDataset_DADA
 
 
@@ -37,21 +36,33 @@ class DataAugmentationForVideoMAE(object):
         return repr
 
 
-def build_pretraining_dataset(args):
+def build_pretraining_dataset(is_train, args):
     transform = DataAugmentationForVideoMAE(args)
-    dataset = VideoMAE(
-        root=None,
-        setting=args.data_path,
-        video_ext='mp4',
-        is_color=True,
-        modality='rgb',
-        new_length=args.num_frames,
-        new_step=args.sampling_rate,
-        transform=transform,
-        temporal_jitter=False,
-        video_loader=True,
-        use_decord=True,
-        lazy_init=False)
+    if args.data_set == 'DoTA':
+        anno_path = None
+        orig_fps = 10
+        if is_train is True:
+            mode = 'train'
+            anno_path = 'train_split.txt'
+        else:
+            mode = 'validation'
+            anno_path = 'val_split.txt'
+        dataset = VideoMAE_DoTA(
+            anno_path=anno_path,
+            data_path=args.data_path,
+            video_ext='mp4',
+            is_color=True,
+            view_len=args.num_frames,
+            view_step=args.sampling_rate,
+            orig_fps=orig_fps,
+            target_fps=args.view_fps,
+            transform=transform,
+            temporal_jitter=False,
+            video_loader=True,
+            use_decord=True,
+            lazy_init=False)
+    else:
+        raise NotImplementedError(f"No dataset class for: {args.data_set}")
     print("Data Aug = %s" % str(transform))
     return dataset
 
@@ -71,7 +82,7 @@ def build_frame_dataset(is_train, test_mode, args):
             mode = 'validation'
             anno_path = 'val_split.txt'
 
-        dataset = FrameClsDataset(
+        dataset = FrameClsDataset_DoTA(
             anno_path=anno_path,
             data_path=args.data_path,
             mode=mode,

@@ -138,6 +138,7 @@ def get_args():
     parser.set_defaults(use_checkpoint=False)
     parser.add_argument('--final_reduction', default='fc_norm', choices=['fc_norm', 'cls', 'none'],
                         type=str, help='type of reduction at the end of ViT encoder. cls: only CLS token, fc_norm: mean pooling, none: no reduction')
+    parser.add_argument('--freeze_layers', default=None, type=str)
 
     # Dataset parameters
     parser.add_argument('--data_path', default='/path/to/list_kinetics-400', type=str,
@@ -402,11 +403,15 @@ def main(args, ds_init):
     model.to(device)
 
     # # Freeze specific layers
-    # for name, param in model.named_parameters():
-    #     if "blocks" in name and int(name.split(".")[1]) < 6:  # Freeze first 6 blocks
-    #         param.requires_grad = False
-    #     else:
-    #         param.requires_grad = True
+    if args.freeze_layers is not None:
+        if args.freeze_layers.startswith("first N blocks"):
+            n_blocks = int(args.freeze_layers.split(";")[-1])
+            # Freeze first N blocks
+            for name, param in model.named_parameters():
+                if "blocks" in name and int(name.split(".")[1]) < n_blocks:
+                    param.requires_grad = False
+                else:
+                    param.requires_grad = True
 
     model_ema = None
     if args.model_ema:
@@ -573,11 +578,11 @@ def main(args, ds_init):
             log_writer.update(train_probs_median=train_stats['probs_median'], head="my_train_extra", step=epoch)
             #
             [log_writer.writer.add_figure(f"train_plots/train_{k}", fig, global_step=epoch) for k, fig in plots.items()]
-        # if args.output_dir and args.save_ckpt:
-        #     if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
-        #         utils.save_model(
-        #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-        #             loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
+        if args.output_dir and args.save_ckpt:
+            if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
+                utils.save_model(
+                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                    loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
         if data_loader_val is not None:
             test_stats_, test_stats, plots = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
             print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats_['acc']:.1f}%")
@@ -594,12 +599,12 @@ def main(args, ds_init):
                         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
                         loss_scaler=loss_scaler, epoch="bestap", model_ema=model_ema)
             #
-            epoch_save_list = (1, 3, 4, 5, 7, 15)
-            if epoch in epoch_save_list:
-                utils.save_model(
-                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                    loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema
-                )
+            # epoch_save_list = (1, 3, 4, 5, 7, 15)
+            # if epoch in epoch_save_list:
+            #     utils.save_model(
+            #         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+            #         loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema
+            #     )
             #
             print(f'Max accuracy: {max_accuracy:.2f}%')
             if log_writer is not None:

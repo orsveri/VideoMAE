@@ -561,20 +561,6 @@ def print_memory_usage():
     print(f"------------CPU Memory Usage: {used:.2f} GB / {vm.total / (1024 ** 3):.2f} GB")
 
 
-def print_memory_usage():
-    # GPU memory usage
-    if torch.cuda.is_available():
-        for i in range(torch.cuda.device_count()):
-            allocated = torch.cuda.memory_allocated(i) / (1024 ** 3)
-            reserved = torch.cuda.memory_reserved(i) / (1024 ** 3)
-            print(f"------------GPU {i}: Allocated: {allocated:.2f} GB, Reserved: {reserved:.2f} GB")
-
-    # CPU memory usage
-    vm = psutil.virtual_memory()
-    used = (vm.total - vm.available) / (1024 ** 3)
-    print(f"------------CPU Memory Usage: {used:.2f} GB / {vm.total / (1024 ** 3):.2f} GB")
-
-
 class FocalLoss(nn.Module):
     def __init__(self, alpha=1, gamma=2, reduction='mean', multiplier=1.):
         super(FocalLoss, self).__init__()

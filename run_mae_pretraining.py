@@ -7,9 +7,10 @@ import torch.backends.cudnn as cudnn
 import json
 import os
 from pathlib import Path
+from collections import OrderedDict
 from timm.models import create_model
 from optim_factory import create_optimizer
-from datasets import build_pretraining_dataset
+from datasets_frame import build_pretraining_dataset
 from engine_for_pretraining import train_one_epoch
 from utils import NativeScalerWithGradNormCount as NativeScaler
 import utils
@@ -43,6 +44,8 @@ def get_args():
                         
     parser.add_argument('--normlize_target', default=True, type=bool,
                         help='normalized the target patch pixels')
+
+    parser.add_argument('--from_ckpt', default='', help='initialize with checkpoint')
 
     # Optimizer parameters
     parser.add_argument('--opt', default='adamw', type=str, metavar='OPTIMIZER',
@@ -84,6 +87,10 @@ def get_args():
     # Dataset parameters
     parser.add_argument('--data_path', default='/path/to/list_kinetics-400', type=str,
                         help='dataset path')
+    parser.add_argument('--view_fps', type=int, default=10)
+    parser.add_argument('--data_set', default='Kinetics-400',
+                        choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51', 'DoTA', 'DADA2k', 'image_folder'],
+                        type=str, help='dataset')
     parser.add_argument('--imagenet_default_mean_and_std', default=True, action='store_true')
     parser.add_argument('--num_frames', type=int, default= 16)
     parser.add_argument('--sampling_rate', type=int, default= 4)
@@ -143,6 +150,7 @@ def main(args):
     torch.manual_seed(seed)
     np.random.seed(seed)
 
+    cudnn.enabled = True
     cudnn.benchmark = True
 
     model = get_model(args)
@@ -152,8 +160,7 @@ def main(args):
     args.patch_size = patch_size
 
     # get dataset
-    dataset_train = build_pretraining_dataset(args)
-
+    dataset_train = build_pretraining_dataset(is_train=True, args=args)
 
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
@@ -180,8 +187,56 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
+        prefetch_factor=1,
         worker_init_fn=utils.seed_worker
     )
+
+    if args.from_ckpt:
+        if args.from_ckpt.startswith('https'):
+            checkpoint = torch.hub.load_state_dict_from_url(
+                args.from_ckpt, map_location='cpu', check_hash=True)
+        else:
+            checkpoint = torch.load(args.from_ckpt, map_location='cpu')
+
+        print("Load ckpt from %s" % args.from_ckpt)
+        checkpoint_model = None
+        for model_key in ("model", "module"):
+            if model_key in checkpoint:
+                checkpoint_model = checkpoint[model_key]
+                print("Load state_dict by model_key = %s" % model_key)
+                break
+        if checkpoint_model is None:
+            checkpoint_model = checkpoint
+
+        # interpolate position embedding
+        if 'pos_embed' in checkpoint_model:
+            pos_embed_checkpoint = checkpoint_model['pos_embed']
+            embedding_size = pos_embed_checkpoint.shape[-1] # channel dim
+            num_patches = model.patch_embed.num_patches #
+            num_extra_tokens = model.pos_embed.shape[-2] - num_patches # 0/1
+
+            # height (== width) for the checkpoint position embedding
+            orig_size = int(((pos_embed_checkpoint.shape[-2] - num_extra_tokens)//(args.num_frames // model.patch_embed.tubelet_size)) ** 0.5)
+            # height (== width) for the new position embedding
+            new_size = int((num_patches // (args.num_frames // model.patch_embed.tubelet_size) )** 0.5)
+            # class_token and dist_token are kept unchanged
+            if orig_size != new_size:
+                print("Position interpolate from %dx%d to %dx%d" % (orig_size, orig_size, new_size, new_size))
+                extra_tokens = pos_embed_checkpoint[:, :num_extra_tokens]
+                # only the position tokens are interpolated
+                pos_tokens = pos_embed_checkpoint[:, num_extra_tokens:]
+                # B, L, C -> BT, H, W, C -> BT, C, H, W
+                pos_tokens = pos_tokens.reshape(-1, args.num_frames // model.patch_embed.tubelet_size, orig_size, orig_size, embedding_size)
+                pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, embedding_size).permute(0, 3, 1, 2)
+                pos_tokens = torch.nn.functional.interpolate(
+                    pos_tokens, size=(new_size, new_size), mode='bicubic', align_corners=False)
+                # BT, C, H, W -> BT, H, W, C ->  B, T, H, W, C
+                pos_tokens = pos_tokens.permute(0, 2, 3, 1).reshape(-1, args.num_frames // model.patch_embed.tubelet_size, new_size, new_size, embedding_size)
+                pos_tokens = pos_tokens.flatten(1, 3) # B, L, C
+                new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
+                checkpoint_model['pos_embed'] = new_pos_embed
+
+        utils.load_state_dict(model, checkpoint_model)
 
     model.to(device)
     model_without_ddp = model

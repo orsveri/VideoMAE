@@ -127,3 +127,41 @@ class UnsafeOverlapSequencer(BasicLabeledSequencer_Abs):
         assert all([len(seq) == self.seq_length for seq in sequences]), "Sequences are not of the desired length!"
         assert sequences[-1][-1] == timesteps_nb - 1, "Oops, math has gone wrong!-2 Help! Beep boop"
         return sequences
+
+
+class RegularSequencerWithStart(BasicSequencer_Abs):
+    def __init__(self, seq_frequency: int, seq_length: Union[int, float], step: int = 1):
+        super().__init__(seq_frequency=seq_frequency, seq_length=seq_length)
+        assert step > 0, f"Step must be at least 1. Given: {step}"
+        self.seq_step = step  # step based on seq_frequency
+
+    def get_sequences(self, timesteps_nb: Union[int, Sequence, np.ndarray, torch.Tensor], input_frequency: int) -> Sequence[Sequence[int]]:
+        assert input_frequency > 0, f"Input frequency must be positive. Given: {input_frequency}"
+        assert input_frequency % self.seq_frequency == 0, \
+            ("Cannot convert input frequency to target frequency! Input frequency must be divisible by target "
+             f"frequency. Input frequency: {input_frequency}, target frequency: {self.seq_frequency}")
+        if isinstance(timesteps_nb, (Sequence, np.ndarray, torch.Tensor)):
+            timesteps_nb = len(timesteps_nb)
+        # 1. Align fps, skipping some frames. But we also want to keep the last frame. Just because.
+        fps_step = input_frequency // self.seq_frequency
+        seq_len = fps_step * self.seq_length
+        inter_sequence_start = fps_step - 1
+        actual_seq_length = seq_len - inter_sequence_start
+        if actual_seq_length > timesteps_nb:
+            return None
+        nb_sequences = int((timesteps_nb - actual_seq_length) // self.seq_step) + 1
+        stop = timesteps_nb - actual_seq_length + 1
+        start = (timesteps_nb - actual_seq_length) % self.seq_step
+        # 3. Get slices of indices to form sequences
+        # sequences = [list(range(seq_start_idx, seq_start_idx + actual_seq_length + 1, fps_step))
+        sequences = [list(range(seq_start_idx, seq_start_idx+seq_len, fps_step))
+                     for seq_start_idx in range(start, stop, self.seq_step)]
+        assert all([len(seq) == self.seq_length for seq in sequences]), "Sequences are not of the desired length!"
+        assert nb_sequences == len(sequences), "Oops, math has gone wrong! Number of sequences is incorrect!"
+        assert sequences[-1][-1] == timesteps_nb - 1, "Oops, math has gone wrong!-2 Help! Beep boop"
+        # 4. If the first sequence is too far from the start, add another one
+        if start > min(0.3*input_frequency, 5):
+            new_seq = list(range(0, 0+seq_len, fps_step))
+            assert len(new_seq) == self.seq_length
+            sequences.append(new_seq)
+        return sequences

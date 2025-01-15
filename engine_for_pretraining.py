@@ -1,3 +1,4 @@
+import gc
 import math
 import sys
 from typing import Iterable
@@ -6,6 +7,7 @@ import torch.nn as nn
 import utils
 from einops import rearrange
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+
 
 def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler, max_norm: float = 0, patch_size: int = 16, 
@@ -21,6 +23,8 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
     loss_func = nn.MSELoss()
 
     for step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        gc.collect()
+        torch.cuda.empty_cache()
         # assign learning rate & weight decay for each step
         it = start_steps + step  # global training iteration
         if lr_schedule_values is not None or wd_schedule_values is not None:
@@ -69,7 +73,17 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
                                 parameters=model.parameters(), create_graph=is_second_order)
         loss_scale_value = loss_scaler.state_dict()["scale"]
 
+        oshape = outputs.shape[0]
+        del loss
+        del videos
+        del bool_masked_pos
+        del outputs
         torch.cuda.synchronize()
+
+        if step % print_freq == 0:
+            # Print memory usage after each iteration
+            print(f"AFTER Batch: {step}, total batch size {oshape}")
+            utils.print_memory_usage()
 
         metric_logger.update(loss=loss_value)
         metric_logger.update(loss_scale=loss_scale_value)
