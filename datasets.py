@@ -38,8 +38,8 @@ class DataAugmentationForVideoMAE(object):
 def build_pretraining_dataset(args):
     transform = DataAugmentationForVideoMAE(args)
     dataset = VideoMAE(
-        root=None,
-        setting=args.data_path,
+        root=args.data_path,
+        setting="annotations/train.csv",
         video_ext='mp4',
         is_color=True,
         modality='rgb',

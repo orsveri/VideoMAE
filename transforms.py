@@ -100,7 +100,6 @@ class GroupMultiScaleCrop(object):
 
     def __call__(self, img_tuple):
         img_group, label = img_tuple
-        
         im_size = img_group[0].size
 
         crop_w, crop_h, offset_w, offset_h = self._sample_crop_size(im_size)

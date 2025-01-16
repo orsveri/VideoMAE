@@ -27,6 +27,8 @@ def get_args():
     parser.add_argument('--model', default='pretrain_videomae_base_patch16_224', type=str, metavar='MODEL',
                         help='Name of model to train')
 
+    parser.add_argument('--from_ckpt', default=None, type=str, help='Path of the ckpt with which initialize the model')
+
     parser.add_argument('--decoder_depth', default=4, type=int,
                         help='depth of decoder')
 
@@ -44,8 +46,6 @@ def get_args():
                         
     parser.add_argument('--normlize_target', default=True, type=bool,
                         help='normalized the target patch pixels')
-
-    parser.add_argument('--from_ckpt', default='', help='initialize with checkpoint')
 
     # Optimizer parameters
     parser.add_argument('--opt', default='adamw', type=str, metavar='OPTIMIZER',
@@ -187,8 +187,8 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
-        prefetch_factor=1,
-        worker_init_fn=utils.seed_worker
+        worker_init_fn=utils.seed_worker,
+        persistent_workers=True,
     )
 
     if args.from_ckpt:
@@ -200,7 +200,7 @@ def main(args):
 
         print("Load ckpt from %s" % args.from_ckpt)
         checkpoint_model = None
-        for model_key in ("model", "module"):
+        for model_key in ("module", "model"):
             if model_key in checkpoint:
                 checkpoint_model = checkpoint[model_key]
                 print("Load state_dict by model_key = %s" % model_key)
@@ -235,6 +235,19 @@ def main(args):
                 pos_tokens = pos_tokens.flatten(1, 3) # B, L, C
                 new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
                 checkpoint_model['pos_embed'] = new_pos_embed
+
+                new_dict = {}
+
+        # Only for fine-tune models
+        # new_dict = {}
+        # for k in checkpoint_model.keys():
+        #     if k.startswith("fc_norm"):
+        #         value = checkpoint_model[k]
+        #         k = k.replace("fc_norm", "norm")
+        #         new_dict[f"encoder.{k}"] = value
+        #     else:
+        #         new_dict[f"encoder.{k}"] = checkpoint_model[k]
+        # checkpoint_model = new_dict
 
         utils.load_state_dict(model, checkpoint_model)
 
@@ -292,6 +305,9 @@ def main(args):
             patch_size=patch_size[0],
             normlize_target=args.normlize_target,
         )
+        if log_writer is not None:
+            log_writer.update(iter=epoch * num_training_steps_per_epoch, head="my_train", step=epoch)
+            log_writer.update(epoch=epoch, head="my_train", step=epoch * num_training_steps_per_epoch)
         if args.output_dir:
             if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
                 utils.save_model(

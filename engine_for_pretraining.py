@@ -80,7 +80,7 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
         del outputs
         torch.cuda.synchronize()
 
-        if step % print_freq == 0:
+        if step % (print_freq*5) == 0:
             # Print memory usage after each iteration
             print(f"AFTER Batch: {step}, total batch size {oshape}")
             utils.print_memory_usage()

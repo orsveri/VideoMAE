@@ -2,4 +2,6 @@ logs/
 .idea
 __pycache__
 decoders/__pycache__
+job_outputs
+jobs/job_outputs
 

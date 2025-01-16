@@ -1,5 +1,8 @@
 import os
+import cv2
 import numpy as np
+import pandas as pd
+from tqdm import tqdm
 from numpy.lib.function_base import disp
 import torch
 import decord
@@ -11,6 +14,14 @@ from decord import VideoReader, cpu
 from torch.utils.data import Dataset
 import video_transforms as video_transforms 
 import volume_transforms as volume_transforms
+
+
+kinetics_700_ignore_list = (
+    "z3G3aq7olkE", "qUPijtzm3j0", "y4OSrkGHTU0", "WdfC1Oq4PqY", "5d9mIpws4cg", 
+    "A-FCzUzEd4U", "y7cYaYX4gdw", "SYTMgaqGhfg", "BSN_nDiTwBo", "zLD_q2djrYs", 
+    "NNazT7dDWxA", "_dbw-EJqoMY", "ixQrfusr6k8", "FAqHwAPZfeE"
+)
+
 
 class VideoClsDataset(Dataset):
     """Load your own video classification dataset."""
@@ -440,7 +451,8 @@ class VideoMAE(torch.utils.data.Dataset):
                  temporal_jitter=False,
                  video_loader=False,
                  use_decord=False,
-                 lazy_init=False):
+                 lazy_init=False,
+                 manager=None):
 
         super(VideoMAE, self).__init__()
         self.root = root
@@ -462,31 +474,74 @@ class VideoMAE(torch.utils.data.Dataset):
         self.transform = transform
         self.lazy_init = lazy_init
 
-
         if not self.lazy_init:
-            self.clips = self._make_dataset(root, setting)
+            self.clips = self._make_dataset_snellius(root, setting)
             if len(self.clips) == 0:
                 raise(RuntimeError("Found 0 video clips in subfolders of: " + root + "\n"
                                    "Check your data directory (opt.data-dir)."))
-
+        
+        if manager:
+            self.corrupt_clips = manager.list()
+            self.corrupt_clips_decord = manager.list()
+    
     def __getitem__(self, index):
 
         directory, target = self.clips[index]
-        if self.video_loader:
-            if '.' in directory.split('/')[-1]:
+        if '.' in directory.split('/')[-1]:
                 # data in the "setting" file already have extension, e.g., demo.mp4
                 video_name = directory
-            else:
-                # data in the "setting" file do not have extension, e.g., demo
-                # So we need to provide extension (i.e., .mp4) to complete the file name.
-                video_name = '{}.{}'.format(directory, self.video_ext)
+        else:
+            # data in the "setting" file do not have extension, e.g., demo
+            # So we need to provide extension (i.e., .mp4) to complete the file name.
+            video_name = '{}.{}'.format(directory, self.video_ext)
 
+        if self.video_loader:
             decord_vr = decord.VideoReader(video_name, num_threads=1)
             duration = len(decord_vr)
+            segment_indices, skip_offsets = self._sample_train_indices(duration)
+            images = self._video_TSN_decord_batch_loader(directory, decord_vr, duration, segment_indices, skip_offsets)
+            assert len(images) > 0
 
-        segment_indices, skip_offsets = self._sample_train_indices(duration)
+        process_data, mask = self.transform((images, None)) # T*C,H,W
+        process_data = process_data.view((self.new_length, 3) + process_data.size()[-2:]).transpose(0,1)  # T*C,H,W -> T,C,H,W -> C,T,H,W
+        
+        return (process_data, mask)
+    
+    def __getitem__check(self, index):
 
-        images = self._video_TSN_decord_batch_loader(directory, decord_vr, duration, segment_indices, skip_offsets)
+        directory, target = self.clips[index]
+        if '.' in directory.split('/')[-1]:
+                # data in the "setting" file already have extension, e.g., demo.mp4
+                video_name = directory
+        else:
+            # data in the "setting" file do not have extension, e.g., demo
+            # So we need to provide extension (i.e., .mp4) to complete the file name.
+            video_name = '{}.{}'.format(directory, self.video_ext)
+
+        #if self.video_loader:
+        try:
+            decord_vr = decord.VideoReader(video_name, num_threads=1)
+            duration = len(decord_vr)
+            segment_indices, skip_offsets = self._sample_train_indices(duration)
+            images = self._video_TSN_decord_batch_loader(directory, decord_vr, duration, segment_indices, skip_offsets)
+            assert len(images) > 0
+            return 1
+        except Exception as e:
+            self.corrupt_clips_decord.append(video_name)
+            print(f"Decord failed for {video_name} with error: {e}. Falling back to OpenCV.")
+            # Fall back to OpenCV
+            cap = cv2.VideoCapture(video_name)
+            if not cap.isOpened():
+                #raise RuntimeError(f"Error: Unable to open video file {video_name}")
+                self.corrupt_clips.append(video_name)
+                return 0
+            duration = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            if duration < self.new_length:
+                self.corrupt_clips.append(video_name)
+            return 0
+            segment_indices, skip_offsets = self._sample_train_indices(duration)
+            images = self._video_TSN_opencv_batch_loader(cap, duration, segment_indices, skip_offsets)
+            assert len(images) > 0
 
         process_data, mask = self.transform((images, None)) # T*C,H,W
         process_data = process_data.view((self.new_length, 3) + process_data.size()[-2:]).transpose(0,1)  # T*C,H,W -> T,C,H,W -> C,T,H,W
@@ -510,7 +565,27 @@ class VideoMAE(torch.utils.data.Dataset):
                 clip_path = os.path.join(line_info[0])
                 target = int(line_info[1])
                 item = (clip_path, target)
-                clips.append(item)
+        return clips
+    
+    def _make_dataset_snellius(self, directory, setting):
+        subset = os.path.splitext(os.path.basename(setting))[0]
+        if not os.path.exists(os.path.join(directory, subset)):
+            raise RuntimeError(f"Subset directory does not exist! {os.path.join(directory, subset)}")
+        if not os.path.exists(os.path.join(directory, setting)):
+            raise(RuntimeError("Setting file %s doesn't exist. Check opt.train-list and opt.val-list. " % (os.path.join(directory, setting))))
+        clips = []
+        df = pd.read_csv(os.path.join(directory, setting))
+        # remove corrupted or too short clips
+        df = df[~df['youtube_id'].isin(kinetics_700_ignore_list)]
+        for i, row in tqdm(df.iterrows(), total=len(df), desc="Processing rows"):
+            target = row["label"]
+            ytid = row["youtube_id"]
+            t1 = str(int(row["time_start"])).zfill(6)
+            t2 = str(int(row["time_end"])).zfill(6)
+            clip_path = os.path.join(directory, subset, target, f"{ytid}_{t1}_{t2}.mp4")
+            if not os.path.exists(clip_path):
+                raise RuntimeError(f"Video does not exist! {clip_path}")
+            clips.append((clip_path, target))
         return clips
 
     def _sample_train_indices(self, num_frames):
@@ -551,7 +626,170 @@ class VideoMAE(torch.utils.data.Dataset):
                     offset += self.new_step
         try:
             video_data = video_reader.get_batch(frame_id_list).asnumpy()
-            sampled_list = [Image.fromarray(video_data[vid, :, :, :]).convert('RGB') for vid, _ in enumerate(frame_id_list)]
+            # Resize frames while maintaining aspect ratio
+            resized_frames = []
+            for frame in video_data:
+                h, w, _ = frame.shape
+                if h < w:
+                    scale = 320 / h
+                    new_h, new_w = 320, int(w * scale)
+                else:
+                    scale = 320 / w
+                    new_h, new_w = int(h * scale), 320
+
+                resized_frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                resized_frames.append(resized_frame)
+            video_data = resized_frames
+            sampled_list = [Image.fromarray(video_data[vid]).convert('RGB') for vid, _ in enumerate(frame_id_list)]
+            #sampled_list = [Image.fromarray(video_data[vid, :, :, :]).convert('RGB') for vid, _ in enumerate(frame_id_list)]
         except:
             raise RuntimeError('Error occured in reading frames {} from video {} of duration {}.'.format(frame_id_list, directory, duration))
         return sampled_list
+    
+
+    # DO NOT RECOMMEND - SLOW FOR VIDEOS!!!!! USE DECORD
+    def _video_TSN_opencv_batch_loader(self, cap, duration, indices, skip_offsets):
+        sampled_list = []
+        frame_id_list = []
+
+        for seg_ind in indices:
+            offset = int(seg_ind)
+            for i, _ in enumerate(range(0, self.skip_length, self.new_step)):
+                if offset + skip_offsets[i] <= duration:
+                    frame_id = offset + skip_offsets[i] - 1
+                else:
+                    frame_id = offset - 1
+                frame_id_list.append(frame_id)
+                if offset + self.new_step < duration:
+                    offset += self.new_step
+
+        for frame_id in frame_id_list:
+            # Set the video frame position
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
+
+            # Read the frame
+            ret, frame = cap.read()
+            if not ret:
+                raise RuntimeError(f"Error: Unable to read frame {frame_id} from video.")
+
+            h, w, _ = frame.shape
+            if h < w:
+                scale = 320 / h
+                new_h, new_w = 320, int(w * scale)
+            else:
+                scale = 320 / w
+                new_h, new_w = int(h * scale), 320
+
+            frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+            # Convert frame to RGB format (OpenCV reads in BGR by default)
+            frame = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+
+            # Append the processed frame
+            sampled_list.append(frame)
+
+        return sampled_list
+    
+
+    def _video_TSN_opencv_batch_loader_debug(self, cap, duration, indices, skip_offsets):
+        sampled_list = []
+        frame_id_list = []
+
+        for seg_ind in indices:
+            offset = int(seg_ind)
+            for i, _ in enumerate(range(0, self.skip_length, self.new_step)):
+                if offset + skip_offsets[i] <= duration:
+                    frame_id = offset + skip_offsets[i] - 1
+                else:
+                    frame_id = offset - 1
+                frame_id_list.append(frame_id)
+                if offset + self.new_step < duration:
+                    offset += self.new_step
+
+        max_id = max(frame_id_list)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_id)
+        ret, frame = cap.read()
+        if not ret:
+            return 0
+        else:
+            return 1
+    
+
+class MockArgs:
+    def __init__(self):
+        self.input_size = 224  # Example input size
+        self.mask_type = 'tube'  # Masking type, 'tube' in this case
+        self.window_size = (8, 14, 14)  # Example window size for TubeMaskingGenerator
+        self.mask_ratio = 0.90  # Example mask ratio
+
+
+from torch.utils.data import DataLoader
+
+class CustomDataLoader(DataLoader):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Initialize attributes to store corrupt clips
+        self.corrupt_clips = []
+        self.corrupt_clips_decord = []
+
+
+
+if __name__ == "__main__":
+    print("Start!")
+    from datasets import DataAugmentationForVideoMAE
+    from itertools import islice
+    from multiprocessing import Manager
+    manager = Manager()
+
+    args = MockArgs()
+    tf = DataAugmentationForVideoMAE(args)
+    dataset = VideoMAE(
+        root='/scratch-nvme/ml-datasets/kinetics/k700-2020',
+        setting="annotations/train.csv",
+        video_ext='mp4',
+        is_color=True,
+        modality='rgb',
+        new_length=16,
+        new_step=4,
+        transform=tf,
+        temporal_jitter=False,
+        video_loader=True,
+        use_decord=True,
+        lazy_init=False,
+        manager=manager)
+    L = len(dataset)
+    
+    dataloader = CustomDataLoader(dataset, batch_size=200, shuffle=False, num_workers=15, pin_memory=False, drop_last=False, persistent_workers=False)
+    L2 = len(dataloader)
+    print_break = L2 // 4
+    print(f"\nDataset length: {L}, Batch size: 200, Batch numbers: {L2}, print break every {print_break} batches\n")
+
+    for idx, batch in tqdm(enumerate(dataloader), total=L2, desc="Validating dataset"):
+        _ = batch
+
+        if idx % print_break == 0:
+            problems = dataloader.dataset.corrupt_clips_decord
+            problems_ = "\n".join(problems)
+            if len(problems) > 0:
+                with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics/decord_err_train_b200_{idx}.txt", mode="w") as f:
+                    f.write(problems_)
+            problems = dataloader.dataset.corrupt_clips
+            problems_ = "\n".join(problems)
+            if len(problems) > 0:
+                with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics/opencv_err_train_b200_{idx}.txt", mode="w") as f:
+                    f.write(problems_)
+        
+    problems = dataloader.dataset.corrupt_clips_decord
+    problems_ = "\n".join(problems)
+    if len(problems) > 0:
+        with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics/decord_err_train_b200.txt", mode="w") as f:
+            f.write(problems_)
+    problems = dataloader.dataset.corrupt_clips
+    problems_ = "\n".join(problems)
+    if len(problems) > 0:
+        with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics/opencv_err_train_b200.txt", mode="w") as f:
+            f.write(problems_)
+
+    print("Done!")
+    exit(0)
+

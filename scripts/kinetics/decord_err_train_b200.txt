@@ -1,0 +1,10 @@
+/scratch-nvme/ml-datasets/kinetics/k700-2020/train/adjusting glasses/5d9mIpws4cg_000130_000140.mp4
+/scratch-nvme/ml-datasets/kinetics/k700-2020/train/changing gear in car/A-FCzUzEd4U_000000_000010.mp4
+/scratch-nvme/ml-datasets/kinetics/k700-2020/train/cleaning shoes/y7cYaYX4gdw_000047_000057.mp4
+/scratch-nvme/ml-datasets/kinetics/k700-2020/train/cracking back/SYTMgaqGhfg_000010_000020.mp4
+/scratch-nvme/ml-datasets/kinetics/k700-2020/train/faceplanting/BSN_nDiTwBo_000004_000014.mp4
+/scratch-nvme/ml-datasets/kinetics/k700-2020/train/flipping pancake/zLD_q2djrYs_000030_000040.mp4
+/scratch-nvme/ml-datasets/kinetics/k700-2020/train/gospel singing in church/NNazT7dDWxA_000130_000140.mp4
+/scratch-nvme/ml-datasets/kinetics/k700-2020/train/making sushi/_dbw-EJqoMY_001023_001033.mp4
+/scratch-nvme/ml-datasets/kinetics/k700-2020/train/punching bag/ixQrfusr6k8_000001_000011.mp4
+/scratch-nvme/ml-datasets/kinetics/k700-2020/train/roller skating/FAqHwAPZfeE_000018_000028.mp4
