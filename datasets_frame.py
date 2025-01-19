@@ -4,7 +4,10 @@ from torchvision import transforms
 from transforms import *
 from masking_generator import TubeMaskingGenerator
 from dota import FrameClsDataset_DoTA, VideoMAE_DoTA
+from dada import VideoMAE_DADA2K
+from bdd100k import VideoMAE_BDD100K
 from dada import FrameClsDataset_DADA
+from datasets import build_pretraining_dataset as orig_build_pre
 
 
 class DataAugmentationForVideoMAE(object):
@@ -43,10 +46,10 @@ def build_pretraining_dataset(is_train, args):
         orig_fps = 10
         if is_train is True:
             mode = 'train'
-            anno_path = 'train_split.txt'
+            anno_path = 'all_split.txt' # 'train_split.txt'
         else:
             mode = 'validation'
-            anno_path = 'val_split.txt'
+            anno_path = 'all_split.txt' # 'val_split.txt'
         dataset = VideoMAE_DoTA(
             anno_path=anno_path,
             data_path=args.data_path,
@@ -61,8 +64,42 @@ def build_pretraining_dataset(is_train, args):
             video_loader=True,
             use_decord=True,
             lazy_init=False)
+    elif args.data_set == 'DADA2K':
+        anno_path = "DADA2K_my_split/all.txt"
+        orig_fps = 30
+        dataset = VideoMAE_DADA2K(
+            anno_path=anno_path,
+            data_path=args.data_path,
+            video_ext='mp4',
+            is_color=True,
+            view_len=args.num_frames,
+            view_step=args.sampling_rate,
+            orig_fps=orig_fps,
+            target_fps=args.view_fps,
+            transform=transform,
+            temporal_jitter=False,
+            video_loader=True,
+            use_decord=True,
+            lazy_init=False
+        )
+    elif args.data_set == 'BDD100K':
+        anno_path = None
+        orig_fps = 30
+        dataset = VideoMAE_BDD100K(
+            root=args.data_path,
+            setting="/gpfs/work3/0/tese0625/datasets/bdd100k_splits/all.txt",
+            video_ext='mov',
+            is_color=True,
+            modality='rgb',
+            new_length=args.num_frames,
+            new_step=args.sampling_rate,
+            transform=transform,
+            temporal_jitter=False,
+            video_loader=True,
+            use_decord=True,
+            lazy_init=False)
     else:
-        raise NotImplementedError(f"No dataset class for: {args.data_set}")
+        dataset = orig_build_pre(args)
     print("Data Aug = %s" % str(transform))
     return dataset
 

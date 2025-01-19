@@ -583,7 +583,6 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
         self.lazy_init = lazy_init
         self.ttc_TT = args.ttc_TT if hasattr(args, "ttc_TT") else 2.
         self.ttc_TA = args.ttc_TA if hasattr(args, "ttc_TA") else 1.
-        # TODO: fill in parameters
         self.sequencer = RegularSequencerWithStart(seq_frequency=self.tfps, seq_length=self.view_len, step=self.view_step)
 
         if not self.lazy_init:
@@ -657,7 +656,7 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
         self.ttc = ttc
         self._smoothed_label_array = smoothed_label_array
 
-    def load_images(self, dataset_sample, final_resize=False, resize_scale=None):
+    def load_images(self, dataset_sample, short_size=320):
         clip_id, frame_seq = dataset_sample
         clip_name = self.clip_names[clip_id]
         timesteps = [self.clip_timesteps[clip_id][idx] for idx in frame_seq]
@@ -672,16 +671,16 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
                     print("Image doesn't exist! ", fname)
                     exit(1)
                 img = cv2.resize(img, dsize=(0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_CUBIC)
-                # if final_resize:
-                #     img = cv2.resize(img, dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
-                # elif resize_scale is not None:
-                #     short_side = min(img.shape[:2])
-                #     target_side = self.crop_size * resize_scale
-                #     k = target_side / short_side
-                #     img = cv2.resize(img, dsize=(0,0), fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
-                # else:
-                #     raise ValueError
-                # Convert OpenCV image (numpy) to PIL.Image and append to view
+                # resze
+                if short_size is not None:
+                    h, w, _ = img.shape
+                    if h < w:
+                        scale = 320 / h
+                        new_h, new_w = 320, int(w * scale)
+                    else:
+                        scale = 320 / w
+                        new_h, new_w = int(h * scale), 320
+                    img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
                 img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
                 view.append(img)
         #view = np.stack(view, axis=0)
@@ -696,7 +695,7 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
                     warnings.warn("video {} not correctly loaded during training".format(sample))
                     index = np.random.randint(self.__len__())
                     sample = self.dataset_samples[index]
-                    buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)
+                    buffer, _, __ = self.load_images(sample, short_size=320)
 
         process_data, mask = self.transform((buffer, None))  # T*C,H,W
         # T*C,H,W -> T,C,H,W -> C,T,H,W
@@ -706,3 +705,48 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.dataset_samples)
 
+
+
+class MockArgs:
+    def __init__(self):
+        self.input_size = 224  # Example input size
+        self.mask_type = 'tube'  # Masking type, 'tube' in this case
+        self.window_size = (8, 14, 14)  # Example window size for TubeMaskingGenerator
+        self.mask_ratio = 0.90  # Example mask ratio
+
+
+if __name__ == "__main__":
+    from datasets import DataAugmentationForVideoMAE
+    args = MockArgs()
+    tf = DataAugmentationForVideoMAE(args)
+
+    dataset = VideoMAE_DoTA(
+        anno_path='all_split.txt',
+        data_path="/gpfs/work3/0/tese0625/RiskNetData/DoTA_refined",
+        video_ext='mp4',
+        is_color=True,
+        view_len=16,
+        view_step=1,
+        orig_fps=10,
+        target_fps=10,
+        transform=tf,
+        temporal_jitter=False,
+        video_loader=True,
+        use_decord=True,
+        lazy_init=False
+    )
+    L = len(dataset)
+    labels = dataset._label_array
+    assert len(labels) == L, f"L={L}, labels len is {len(labels)}"
+    labels = np.array(labels)
+    unique, counts = np.unique(labels, return_counts=True)
+
+    print(f"Dataset length: {L} for view step {dataset.view_step}")
+    print("unique values and their counts:")
+    for u, c in zip(unique, counts):
+        print(f"item {u}: {c} times")
+
+    item = dataset[0]
+    print("\nitem 0: \n", item)
+
+    exit(0)

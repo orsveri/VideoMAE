@@ -11,7 +11,7 @@ from torchvision import transforms
 from random_erasing import RandomErasing
 import warnings
 from decord import VideoReader, cpu
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 import video_transforms as video_transforms 
 import volume_transforms as volume_transforms
 
@@ -611,6 +611,29 @@ class VideoMAE(torch.utils.data.Dataset):
         return offsets + 1, skip_offsets
 
 
+    def decord_extract_frames(self, video_reader, frame_id_list, duration=None, video_name=None):
+        sampled_list = []
+        try:
+            video_data = video_reader.get_batch(frame_id_list).asnumpy()
+            # Resize frames while maintaining aspect ratio
+            resized_frames = []
+            for frame in video_data:
+                h, w, _ = frame.shape
+                if h < w:
+                    scale = 320 / h
+                    new_h, new_w = 320, int(w * scale)
+                else:
+                    scale = 320 / w
+                    new_h, new_w = int(h * scale), 320
+
+                resized_frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                resized_frames.append(resized_frame)
+            sampled_list = [Image.fromarray(frame).convert('RGB') for frame in resized_frames]
+        except:
+            raise RuntimeError('Error occured in reading frames {} from video {} of duration {}.'.format(frame_id_list, video_name, duration))
+        return sampled_list
+
+
     def _video_TSN_decord_batch_loader(self, directory, video_reader, duration, indices, skip_offsets):
         sampled_list = []
         frame_id_list = []
@@ -723,8 +746,6 @@ class MockArgs:
         self.mask_ratio = 0.90  # Example mask ratio
 
 
-from torch.utils.data import DataLoader
-
 class CustomDataLoader(DataLoader):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -771,23 +792,23 @@ if __name__ == "__main__":
             problems = dataloader.dataset.corrupt_clips_decord
             problems_ = "\n".join(problems)
             if len(problems) > 0:
-                with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics/decord_err_train_b200_{idx}.txt", mode="w") as f:
+                with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/decord_err_train_b200_{idx}.txt", mode="w") as f:
                     f.write(problems_)
             problems = dataloader.dataset.corrupt_clips
             problems_ = "\n".join(problems)
             if len(problems) > 0:
-                with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics/opencv_err_train_b200_{idx}.txt", mode="w") as f:
+                with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/opencv_err_train_b200_{idx}.txt", mode="w") as f:
                     f.write(problems_)
         
     problems = dataloader.dataset.corrupt_clips_decord
     problems_ = "\n".join(problems)
     if len(problems) > 0:
-        with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics/decord_err_train_b200.txt", mode="w") as f:
+        with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/decord_err_train_b200.txt", mode="w") as f:
             f.write(problems_)
     problems = dataloader.dataset.corrupt_clips
     problems_ = "\n".join(problems)
     if len(problems) > 0:
-        with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics/opencv_err_train_b200.txt", mode="w") as f:
+        with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/opencv_err_train_b200.txt", mode="w") as f:
             f.write(problems_)
 
     print("Done!")

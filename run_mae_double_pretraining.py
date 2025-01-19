@@ -7,15 +7,39 @@ import torch
 import torch.backends.cudnn as cudnn
 import json
 import os
+from itertools import cycle
+from copy import deepcopy
 from pathlib import Path
 from collections import OrderedDict
+
 from timm.models import create_model
 from optim_factory import create_optimizer
 from datasets_frame import build_pretraining_dataset
-from engine_for_pretraining import train_one_epoch
+from engine_for_pretraining import train_one_epoch_double
 from utils import NativeScalerWithGradNormCount as NativeScaler
 import utils
+
 import modeling_pretrain
+
+
+class CyclicDataLoader:
+    def __init__(self, dataloader):
+        self.dataloader = dataloader
+        self.iterator = iter(dataloader)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            return next(self.iterator)
+        except StopIteration:
+            self.iterator = iter(self.dataloader)
+            return next(self.iterator)
+
+    def set_epoch(self, epoch):
+        if hasattr(self.dataloader.sampler, "set_epoch"):
+            self.dataloader.sampler.set_epoch(epoch)
 
 
 def get_args():
@@ -86,15 +110,21 @@ def get_args():
                         help='Training interpolation (random, bilinear, bicubic default: "bicubic")')
 
     # Dataset parameters
-    parser.add_argument('--data_path', default='/path/to/list_kinetics-400', type=str,
+    parser.add_argument('--data_path1', default='/path/to/list_kinetics-400', type=str,
+                        help='dataset path')
+    parser.add_argument('--data_path2', default='/path/to/list_kinetics-400', type=str,
                         help='dataset path')
     parser.add_argument('--view_fps', type=int, default=10)
-    parser.add_argument('--data_set', default='Kinetics-400',
+    parser.add_argument('--data_set1', default='Kinetics-400',
+                        choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51', 'DoTA', 'DADA2K', 'BDD100K', 'image_folder'],
+                        type=str, help='dataset')
+    parser.add_argument('--data_set2', default='Kinetics-400',
                         choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51', 'DoTA', 'DADA2K', 'BDD100K', 'image_folder'],
                         type=str, help='dataset')
     parser.add_argument('--imagenet_default_mean_and_std', default=True, action='store_true')
     parser.add_argument('--num_frames', type=int, default= 16)
-    parser.add_argument('--sampling_rate', type=int, default= 4)
+    parser.add_argument('--sampling_rate1', type=int, default= 4)
+    parser.add_argument('--sampling_rate2', type=int, default= 4)
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
     parser.add_argument('--log_dir', default=None,
@@ -160,20 +190,59 @@ def main(args):
     args.window_size = (args.num_frames // 2, args.input_size // patch_size[0], args.input_size // patch_size[1])
     args.patch_size = patch_size
 
-    # get dataset
-    dataset_train = build_pretraining_dataset(is_train=True, args=args)
+    # get datasets
+    args1 = deepcopy(args)
+    args2 = deepcopy(args)
+    args1.data_set = args.data_set1
+    args1.data_path = args.data_path1
+    args1.sampling_rate = args.sampling_rate1
+    args2.data_set = args.data_set2
+    args2.data_path = args.data_path2
+    args2.sampling_rate = args.sampling_rate2
+    dataset_train1 = build_pretraining_dataset(is_train=True, args=args1)
+    dataset_train2 = build_pretraining_dataset(is_train=True, args=args2)
 
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
     sampler_rank = global_rank
 
     total_batch_size = args.batch_size * num_tasks
-    num_training_steps_per_epoch = len(dataset_train) // total_batch_size
+    num_training_steps_per_epoch = max(len(dataset_train1), len(dataset_train2)) // total_batch_size * 2
 
-    sampler_train = torch.utils.data.DistributedSampler(
-        dataset_train, num_replicas=num_tasks, rank=sampler_rank, shuffle=True
+    sampler_train1 = torch.utils.data.DistributedSampler(
+        dataset_train1, num_replicas=num_tasks, rank=sampler_rank, shuffle=True
     )
-    print("Sampler_train = %s" % str(sampler_train))
+    sampler_train2 = torch.utils.data.DistributedSampler(
+        dataset_train2, num_replicas=num_tasks, rank=sampler_rank, shuffle=True
+    )
+    print("Sampler_train = ", str(sampler_train1), )
+    print(str(sampler_train2))
+
+    data_loader_train1 = torch.utils.data.DataLoader(
+        dataset_train1, sampler=sampler_train1,
+        batch_size=args.batch_size // 2,  # Half-batch for dataset 1
+        num_workers=args.num_workers // 2,
+        pin_memory=args.pin_mem,
+        drop_last=True,
+        worker_init_fn=utils.seed_worker,
+        persistent_workers=True,
+    )
+    data_loader_train2 = torch.utils.data.DataLoader(
+        dataset_train2, sampler=sampler_train2,
+        batch_size=args.batch_size // 2,  # Half-batch for dataset 2
+        num_workers=args.num_workers // 2,
+        pin_memory=args.pin_mem,
+        drop_last=True,
+        worker_init_fn=utils.seed_worker,
+        persistent_workers=True,
+    )
+        # Find the smaller dataset
+    if len(data_loader_train1) < len(data_loader_train2):
+        smaller_loader, larger_loader = data_loader_train1, data_loader_train2
+    else:
+        smaller_loader, larger_loader = data_loader_train2, data_loader_train1
+    # Cycle through the smaller DataLoader
+    smaller_loader = CyclicDataLoader(smaller_loader)
 
 
     if global_rank == 0 and args.log_dir is not None:
@@ -181,16 +250,6 @@ def main(args):
         log_writer = utils.TensorboardLogger(log_dir=args.log_dir)
     else:
         log_writer = None
-
-    data_loader_train = torch.utils.data.DataLoader(
-        dataset_train, sampler=sampler_train,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        drop_last=True,
-        worker_init_fn=utils.seed_worker,
-        persistent_workers=True,
-    )
 
     if args.from_ckpt:
         if args.from_ckpt.startswith('https'):
@@ -297,11 +356,12 @@ def main(args):
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
-            data_loader_train.sampler.set_epoch(epoch)
+            larger_loader.sampler.set_epoch(epoch)
+            smaller_loader.set_epoch(epoch)
         if log_writer is not None:
             log_writer.set_step(epoch * num_training_steps_per_epoch)
-        train_stats = train_one_epoch(
-            model, data_loader_train,
+        train_stats = train_one_epoch_double(
+            model, larger_loader, smaller_loader,
             optimizer, device, epoch, loss_scaler,
             args.clip_grad, log_writer=log_writer,
             start_steps=epoch * num_training_steps_per_epoch,

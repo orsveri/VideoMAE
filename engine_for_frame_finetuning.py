@@ -69,6 +69,11 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     labels = []
     if_dist = dist.is_initialized()
 
+    # save grad norms
+    qkv_grad_norms = np.zeros(shape=(12, 12, 3), dtype=np.float64)
+    proj_grad_norms = np.zeros(shape=(12, 2), dtype=np.float64)
+    patch_embed_grad_norms = np.zeros(shape=(2,), dtype=np.float64)
+
     for data_iter_step, (samples, targets, _, extra_info) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         gc.collect()  # Run garbage collection to clear unused memory
         torch.cuda.empty_cache()  # Free up CUDA memory
@@ -156,6 +161,12 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     model_ema.update(model)
             loss_scale_value = loss_scaler.state_dict()["scale"]
 
+        grad_norms = utils.collect_grad_norms(model, num_layers=12, num_heads=6)
+        qkv_grad_norms_iter, proj_grad_norms_iter, patch_embed_grad_norms_iter = grad_norms
+        qkv_grad_norms += qkv_grad_norms_iter
+        proj_grad_norms += proj_grad_norms_iter
+        patch_embed_grad_norms += patch_embed_grad_norms_iter
+
         del loss
         del samples
         torch.cuda.synchronize()
@@ -204,8 +215,18 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     if if_dist:
         preds = gather_predictions_nontensor(preds, world_size=dist.get_world_size())
         labels = gather_predictions_nontensor(labels, world_size=dist.get_world_size())
+        qkv_grad_norms = gather_predictions_nontensor(qkv_grad_norms, world_size=dist.get_world_size())
+        proj_grad_norms = gather_predictions_nontensor(proj_grad_norms, world_size=dist.get_world_size())
+        patch_embed_grad_norms = gather_predictions_nontensor(patch_embed_grad_norms, world_size=dist.get_world_size())
+        qkv_grad_norms = np.sum(qkv_grad_norms, axis=0)
+        proj_grad_norms = np.sum(proj_grad_norms, axis=0)
+        patch_embed_grad_norms = np.sum(patch_embed_grad_norms, axis=0)
     all_preds = torch.cat(preds, dim=0)
     all_labels = torch.cat(labels, dim=0)
+    qkv_grad_norms = qkv_grad_norms / len(data_loader)
+    proj_grad_norms = proj_grad_norms / len(data_loader)
+    patch_embed_grad_norms = patch_embed_grad_norms / len(data_loader)
+    grad_norms = {"qkv": qkv_grad_norms, "proj": proj_grad_norms, "patch_embed": patch_embed_grad_norms}
     my_metrics = {}
     metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(all_preds, all_labels)
     # Log them
@@ -233,7 +254,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, my_metrics, plots
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, my_metrics, plots, grad_norms
 
 
 @torch.no_grad()

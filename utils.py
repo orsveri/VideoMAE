@@ -122,15 +122,17 @@ class MetricLogger(object):
     def add_meter(self, name, meter):
         self.meters[name] = meter
 
-    def log_every(self, iterable, print_freq, header=None):
+    def log_every(self, iterable, print_freq, header=None, length=None):
         i = 0
+        if length is None:
+            length = len(iterable)
         if not header:
             header = ''
         start_time = time.time()
         end = time.time()
         iter_time = SmoothedValue(fmt='{avg:.4f}')
         data_time = SmoothedValue(fmt='{avg:.4f}')
-        space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
+        space_fmt = ':' + str(len(str(length))) + 'd'
         log_msg = [
             header,
             '[{0' + space_fmt + '}/{1}]',
@@ -147,18 +149,18 @@ class MetricLogger(object):
             data_time.update(time.time() - end)
             yield obj
             iter_time.update(time.time() - end)
-            if i % print_freq == 0 or i == len(iterable) - 1:
-                eta_seconds = iter_time.global_avg * (len(iterable) - i)
+            if i % print_freq == 0 or i == length - 1:
+                eta_seconds = iter_time.global_avg * (length - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 if torch.cuda.is_available():
                     print(log_msg.format(
-                        i, len(iterable), eta=eta_string,
+                        i, length, eta=eta_string,
                         meters=str(self),
                         time=str(iter_time), data=str(data_time),
                         memory=torch.cuda.max_memory_allocated() / MB))
                 else:
                     print(log_msg.format(
-                        i, len(iterable), eta=eta_string,
+                        i, length, eta=eta_string,
                         meters=str(self),
                         time=str(iter_time), data=str(data_time)))
             i += 1
@@ -166,7 +168,7 @@ class MetricLogger(object):
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
         print('{} Total time: {} ({:.4f} s / it)'.format(
-            header, total_time_str, total_time / len(iterable)))
+            header, total_time_str, total_time / length))
 
 
 class TensorboardLogger(object):
@@ -434,6 +436,17 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, mo
         if model_ema is not None:
             client_state['model_ema'] = get_state_dict(model_ema)
         model.save_checkpoint(save_dir=args.output_dir, tag="checkpoint-%s" % epoch_name, client_state=client_state)
+
+
+def save_model_weights_only(args, epoch, model_without_ddp):
+    """
+    Save only the model weights for evaluation purposes.
+    """
+    output_dir = Path(args.output_dir)
+    checkpoint_path = output_dir / f"checkpoint-{epoch}.pth"
+    to_save = model_without_ddp.state_dict()  # Save only model weights
+    save_on_master(to_save, checkpoint_path)
+
 
 
 def auto_load_model(args, model, model_without_ddp, optimizer, loss_scaler, model_ema=None):
@@ -734,6 +747,79 @@ def gather_predictions_nontensor(info, world_size):
         all_info.extend(rank_info)
 
     return all_info
+
+
+def collect_grad_norms(model, num_layers=12, num_heads=6):
+    """
+    Collects gradients for:
+      - Q, K, V weights and Q/V biases into one array.
+      - Projection weights and biases into another array.
+      - Patch embedding projection weights and biases into a separate array.
+
+    Args:
+        model (torch.nn.Module): The ViT-S model.
+        num_layers (int): Number of transformer layers in the model.
+        num_heads (int): Number of attention heads per layer.
+
+    Returns:
+        tuple:
+            - numpy.ndarray: Array of shape (num_layers, num_heads, 5),
+              where the last dimension corresponds to:
+              [Q weight, K weight, V weight, Q bias, V bias].
+            - numpy.ndarray: Array of shape (num_layers, 2),
+              where the last dimension corresponds to:
+              [Projection weight, Projection bias].
+            - numpy.ndarray: Array of shape (2,), corresponding to:
+              [Patch embedding weight, Patch embedding bias].
+    """
+    # For Q, K, V weights and Q, V biases
+    qkv_grad_norms = np.zeros((num_layers, num_heads, 5))  # [Q weight, K weight, V weight, Q bias, V bias]
+
+    # For projection weights and biases
+    proj_grad_norms = np.zeros((num_layers, 2))  # [Projection weight, Projection bias]
+
+    # For patch embedding projection weights and biases
+    patch_embed_grad_norms = np.zeros(2)  # [Patch embed weight, Patch embed bias]
+
+    # Collect patch embedding gradients
+    if hasattr(model.patch_embed, 'proj'):
+        if model.patch_embed.proj.weight.grad is not None:
+            patch_embed_grad_norms[0] = model.patch_embed.proj.weight.grad.norm().item()
+        if model.patch_embed.proj.bias is not None and model.patch_embed.proj.bias.grad is not None:
+            patch_embed_grad_norms[1] = model.patch_embed.proj.bias.grad.norm().item()
+
+    for layer_idx, block in enumerate(model.blocks):  # Iterate over transformer layers
+        # Handle QKV weight gradients
+        qkv_weight = block.attn.qkv.weight  # Shape: [embed_dim, 3 * num_heads * head_dim]
+        if qkv_weight.grad is not None:
+            qkv_grad = qkv_weight.grad.view(3, num_heads, -1, qkv_weight.shape[0])
+            for head_idx in range(num_heads):
+                for qkv_idx in range(3):  # 0: Q, 1: K, 2: V
+                    qkv_grad_norms[layer_idx, head_idx, qkv_idx] = qkv_grad[qkv_idx, head_idx].norm().item()
+
+        # Handle Q bias gradients
+        q_bias = getattr(block.attn, 'q_bias', None)
+        if q_bias is not None and q_bias.grad is not None:
+            for head_idx in range(num_heads):
+                qkv_grad_norms[layer_idx, head_idx, 3] = q_bias.grad[head_idx].norm().item()
+
+        # Handle V bias gradients
+        v_bias = getattr(block.attn, 'v_bias', None)
+        if v_bias is not None and v_bias.grad is not None:
+            for head_idx in range(num_heads):
+                qkv_grad_norms[layer_idx, head_idx, 4] = v_bias.grad[head_idx].norm().item()
+
+        # Handle projection weights
+        proj_weight = block.attn.proj.weight
+        if proj_weight.grad is not None:
+            proj_grad_norms[layer_idx, 0] = proj_weight.grad.norm().item()
+
+        # Handle projection bias
+        proj_bias = block.attn.proj.bias
+        if proj_bias.grad is not None:
+            proj_grad_norms[layer_idx, 1] = proj_bias.grad.norm().item()
+
+    return qkv_grad_norms, proj_grad_norms, patch_embed_grad_norms
 
 
 # class TemporalProximityLoss(nn.Module):

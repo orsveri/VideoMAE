@@ -541,6 +541,9 @@ def main(args, ds_init):
 
     with open(os.path.join(args.output_dir, "params.json"), mode="w") as f:
         json.dump(vars(args), f, indent=2)
+    grad_norm_dir = os.path.join(args.output_dir, "grad_norms")
+    os.makedirs(grad_norm_dir, exist_ok=True)
+
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     max_accuracy = 0.0
@@ -551,7 +554,7 @@ def main(args, ds_init):
         if log_writer is not None:
             log_writer.set_step(epoch * num_training_steps_per_epoch * args.update_freq)
         print("\ttraining another epoch...")
-        train_stats_, train_stats, plots = train_one_epoch(
+        train_stats_, train_stats, plots, grad_norms = train_one_epoch(
             model, criterion, data_loader_train, optimizer,
             device, epoch, loss_scaler, args.clip_grad, model_ema, mixup_fn,
             log_writer=log_writer, start_steps=epoch * num_training_steps_per_epoch,
@@ -559,6 +562,9 @@ def main(args, ds_init):
             num_training_steps_per_epoch=num_training_steps_per_epoch, update_freq=args.update_freq,
             with_ttc=with_ttc
         )
+        # save grad norms
+        np.savez(os.path.join(grad_norm_dir, f"gradnorm_ep{epoch}.npz"), **grad_norms)
+
         if log_writer is not None:
             log_writer.update(train_acc=train_stats['metr_acc'], head="my_train", step=epoch)
             log_writer.update(train_ap=train_stats['ap'], head="my_train", step=epoch)
@@ -578,26 +584,30 @@ def main(args, ds_init):
             log_writer.update(train_probs_median=train_stats['probs_median'], head="my_train_extra", step=epoch)
             #
             [log_writer.writer.add_figure(f"train_plots/train_{k}", fig, global_step=epoch) for k, fig in plots.items()]
+        # save last model with all the parameters so we can continue from it
+        utils.save_model(
+                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                    loss_scaler=loss_scaler, epoch="last", model_ema=model_ema
+                    )
         if args.output_dir and args.save_ckpt:
             if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
-                utils.save_model(
-                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                    loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema)
+                utils.save_model_weights_only(
+                    args=args, epoch=epoch, model_without_ddp=model_without_ddp)
         if data_loader_val is not None:
             test_stats_, test_stats, plots = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
             print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats_['acc']:.1f}%")
-            if max_accuracy < test_stats["auroc"]:
-                max_accuracy = test_stats["auroc"]
-                if args.output_dir and args.save_ckpt:
-                    utils.save_model(
-                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                        loss_scaler=loss_scaler, epoch="bestauroc", model_ema=model_ema)
-            if max_ap < test_stats["ap"]:
-                max_ap = test_stats["ap"]
-                if args.output_dir and args.save_ckpt:
-                    utils.save_model(
-                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                        loss_scaler=loss_scaler, epoch="bestap", model_ema=model_ema)
+            # if max_accuracy < test_stats["auroc"]:
+            #     max_accuracy = test_stats["auroc"]
+            #     if args.output_dir and args.save_ckpt:
+            #         utils.save_model(
+            #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+            #             loss_scaler=loss_scaler, epoch="bestauroc", model_ema=model_ema)
+            # if max_ap < test_stats["ap"]:
+            #     max_ap = test_stats["ap"]
+            #     if args.output_dir and args.save_ckpt:
+            #         utils.save_model(
+            #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+            #             loss_scaler=loss_scaler, epoch="bestap", model_ema=model_ema)
             #
             # epoch_save_list = (1, 3, 4, 5, 7, 15)
             # if epoch in epoch_save_list:
