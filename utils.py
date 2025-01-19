@@ -790,9 +790,10 @@ def collect_grad_norms(model, num_layers=12, num_heads=6):
 
     for layer_idx, block in enumerate(model.blocks):  # Iterate over transformer layers
         # Handle QKV weight gradients
-        qkv_weight = block.attn.qkv.weight  # Shape: [embed_dim, 3 * num_heads * head_dim]
+        qkv_weight = block.attn.qkv.weight  # Shape: [3 * embed_dim, embed_dim]
         if qkv_weight.grad is not None:
-            qkv_grad = qkv_weight.grad.view(3, num_heads, -1, qkv_weight.shape[0])
+            embed_dim = qkv_weight.shape[1]
+            qkv_grad = qkv_weight.grad.view(3, num_heads, embed_dim // num_heads, embed_dim)
             for head_idx in range(num_heads):
                 for qkv_idx in range(3):  # 0: Q, 1: K, 2: V
                     qkv_grad_norms[layer_idx, head_idx, qkv_idx] = qkv_grad[qkv_idx, head_idx].norm().item()
@@ -800,14 +801,16 @@ def collect_grad_norms(model, num_layers=12, num_heads=6):
         # Handle Q bias gradients
         q_bias = getattr(block.attn, 'q_bias', None)
         if q_bias is not None and q_bias.grad is not None:
+            q_bias_grad = q_bias.grad.view(num_heads, -1)  # Reshape to match heads
             for head_idx in range(num_heads):
-                qkv_grad_norms[layer_idx, head_idx, 3] = q_bias.grad[head_idx].norm().item()
+                qkv_grad_norms[layer_idx, head_idx, 3] = q_bias_grad[head_idx].norm().item()
 
         # Handle V bias gradients
         v_bias = getattr(block.attn, 'v_bias', None)
         if v_bias is not None and v_bias.grad is not None:
+            v_bias_grad = v_bias.grad.view(num_heads, -1)  # Reshape to match heads
             for head_idx in range(num_heads):
-                qkv_grad_norms[layer_idx, head_idx, 4] = v_bias.grad[head_idx].norm().item()
+                qkv_grad_norms[layer_idx, head_idx, 4] = v_bias_grad[head_idx].norm().item()
 
         # Handle projection weights
         proj_weight = block.attn.proj.weight

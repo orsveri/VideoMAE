@@ -70,7 +70,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     if_dist = dist.is_initialized()
 
     # save grad norms
-    qkv_grad_norms = np.zeros(shape=(12, 12, 3), dtype=np.float64)
+    qkv_grad_norms = np.zeros(shape=(12, 6, 5), dtype=np.float64)
     proj_grad_norms = np.zeros(shape=(12, 2), dtype=np.float64)
     patch_embed_grad_norms = np.zeros(shape=(2,), dtype=np.float64)
 
@@ -139,6 +139,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         if loss_scaler is None:
             loss /= update_freq
             model.backward(loss)
+            grad_norms = utils.collect_grad_norms(model, num_layers=12, num_heads=6)
             model.step()
 
             if (data_iter_step + 1) % update_freq == 0:
@@ -155,17 +156,18 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             grad_norm = loss_scaler(loss, optimizer, clip_grad=max_norm,
                                     parameters=model.parameters(), create_graph=is_second_order,
                                     update_grad=(data_iter_step + 1) % update_freq == 0)
+            grad_norms = utils.collect_grad_norms(model, num_layers=12, num_heads=6)
             if (data_iter_step + 1) % update_freq == 0:
                 optimizer.zero_grad()
                 if model_ema is not None:
                     model_ema.update(model)
             loss_scale_value = loss_scaler.state_dict()["scale"]
 
-        grad_norms = utils.collect_grad_norms(model, num_layers=12, num_heads=6)
-        qkv_grad_norms_iter, proj_grad_norms_iter, patch_embed_grad_norms_iter = grad_norms
-        qkv_grad_norms += qkv_grad_norms_iter
-        proj_grad_norms += proj_grad_norms_iter
-        patch_embed_grad_norms += patch_embed_grad_norms_iter
+        if grad_norms is not None:
+            qkv_grad_norms_iter, proj_grad_norms_iter, patch_embed_grad_norms_iter = grad_norms
+            qkv_grad_norms += qkv_grad_norms_iter
+            proj_grad_norms += proj_grad_norms_iter
+            patch_embed_grad_norms += patch_embed_grad_norms_iter
 
         del loss
         del samples
