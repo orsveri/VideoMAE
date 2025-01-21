@@ -233,6 +233,7 @@ class FrameClsDataset_DoTA(Dataset):
             input_size=(self.crop_size, self.crop_size),
             auto_augment=args.aa,
             interpolation=args.train_interpolation,
+            do_transforms=video_transforms.DRIVE_TRANSFORMS
         )
 
         buffer = [transforms.ToPILImage()(frame) for frame in buffer]
@@ -532,6 +533,7 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
                  video_loader=False,
                  use_decord=False,
                  lazy_init=False,
+                 short_size=320,
                  args=None
                  ):
 
@@ -552,6 +554,7 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
         self.use_decord = use_decord
         self.transform = transform
         self.lazy_init = lazy_init
+        self.short_size = short_size
         self.ttc_TT = args.ttc_TT if hasattr(args, "ttc_TT") else 2.
         self.ttc_TA = args.ttc_TA if hasattr(args, "ttc_TA") else 1.
         self.sequencer = RegularSequencerWithStart(seq_frequency=self.tfps, seq_length=self.view_len, step=self.view_step)
@@ -563,9 +566,9 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
                 raise RuntimeError("Found 0 video clips in subfolders of: " + data_path)
             
         if args.transforms_finetune_align:
-            self.__getitem__ = self._getitem
+            self._getitem = self._getitem_finetune_align
         else:
-            self.__getitem__ = self._getitem_orig
+            self._getitem = self._getitem_orig
 
     def _read_anno(self):
         clip_names = None
@@ -618,7 +621,6 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
         smoothed_label_array = []
         sequencer = RegularSequencer(seq_frequency=self.tfps, seq_length=self.view_len, step=self.view_step)
         N = len(self.clip_names)
-        N = 100
         for i in range(N):
             timesteps = self.clip_timesteps[i]
             sequences = sequencer.get_sequences(timesteps_nb=len(timesteps), input_frequency=self.ofps)
@@ -698,53 +700,46 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
         buffer,
         args,
     ):
-        h, w, _ = buffer[0].shape[0]
-        # Perform data augmentation - padding
-        do_pad = video_transforms.pad_wide_clips(h, w, self.crop_size)
-        buffer = [do_pad(img) for img in buffer]
+        if torch.rand(1).item() > 0.3:
+            h, w, _ = buffer[0].shape
+            # Perform data augmentation - padding
+            do_pad = video_transforms.pad_wide_clips(h, w, args.input_size)
+            buffer = [do_pad(img) for img in buffer]
 
-        aug_transform = video_transforms.create_random_augment(
-            input_size=(self.crop_size, self.crop_size),
-            auto_augment=args.aa,
-            interpolation=args.train_interpolation,
-        )
+            aug_transform = video_transforms.create_random_augment(
+                input_size=(args.input_size, args.input_size),
+                auto_augment=args.aa,
+                interpolation=args.train_interpolation,
+                do_transforms=video_transforms.DRIVE_TRANSFORMS
+            )
 
-        buffer = [transforms.ToPILImage()(frame) for frame in buffer]
-        buffer = aug_transform(buffer)
-        buffer = [transforms.ToTensor()(img) for img in buffer]
-        buffer = torch.stack(buffer) # T C H W
-        buffer = buffer.permute(0, 2, 3, 1) # T H W C
-        # T H W C 
-        buffer = tensor_normalize(
-            buffer, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
-        )
-        # T H W C -> C T H W.
-        buffer = buffer.permute(3, 0, 1, 2)
+            buffer = [transforms.ToPILImage()(frame) for frame in buffer]
+            buffer = aug_transform(buffer)
 
         return buffer
 
-    def _getitem(self, index):
+    def _getitem_finetune_align(self, index):
         sample = self.dataset_samples[index]
         if self.video_loader:
-            buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)  # T H W C
+            buffer, _, __ = self.load_images_cv2(sample, short_size=self.short_size)  # T H W C
             if len(buffer) == 0:
                 while len(buffer) == 0:
                     warnings.warn("video {} not correctly loaded during training".format(sample))
                     index = np.random.randint(self.__len__())
                     sample = self.dataset_samples[index]
-                    buffer, _, __ = self.load_images_cv2(sample, short_size=320)
+                    buffer, _, __ = self.load_images_cv2(sample, short_size=self.short_size)
 
         buffer = self._aug_frame(buffer, args)
-        #process_data, mask = self.transform((buffer, None))  # T*C,H,W
+        process_data, mask = self.transform((buffer, None))  # T*C,H,W
         # T*C,H,W -> T,C,H,W -> C,T,H,W
-        #process_data = process_data.view((self.view_len, 3) + process_data.size()[-2:]).transpose(0, 1)
-        #return (process_data, mask)
+        process_data = process_data.view((self.view_len, 3) + process_data.size()[-2:]).transpose(0, 1)
+        return (process_data, mask)
         return buffer
     
     def _getitem_orig(self, index):
         sample = self.dataset_samples[index]
         if self.video_loader:
-            buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)  # T H W C
+            buffer, _, __ = self.load_images(sample, short_size=self.short_size)  # T H W C
             if len(buffer) == 0:
                 while len(buffer) == 0:
                     warnings.warn("video {} not correctly loaded during training".format(sample))
@@ -756,6 +751,9 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
         # T*C,H,W -> T,C,H,W -> C,T,H,W
         process_data = process_data.view((self.view_len, 3) + process_data.size()[-2:]).transpose(0, 1)
         return (process_data, mask)
+
+    def __getitem__(self, index):
+        return self._getitem(index)
 
     def __len__(self):
         return len(self.dataset_samples)
@@ -769,6 +767,8 @@ class MockArgs:
         self.window_size = (8, 14, 14)  # Example window size for TubeMaskingGenerator
         self.mask_ratio = 0.90  # Example mask ratio
         self.transforms_finetune_align = True
+        self.aa = 'rand-m3-n3-mstd0.5-inc1' # "rand-m7-n4-mstd0.5-inc1"
+        self.train_interpolation = "bicubic"
 
 
 if __name__ == "__main__":
@@ -789,7 +789,8 @@ if __name__ == "__main__":
         temporal_jitter=False,
         video_loader=True,
         use_decord=True,
-        lazy_init=False
+        lazy_init=False,
+        args=args,
     )
     L = len(dataset)
     labels = dataset._label_array
@@ -805,8 +806,12 @@ if __name__ == "__main__":
     item = dataset[0]
     #print("\nitem 0: \n", item)
 
-    for item in dataset:
-        item = dataset[0]
-        cv2.imwrite("_{}.jpg", item)
+    if True:
+        from data_tools.vis_utils import create_image_matrix
+        os.makedirs("/mnt/experiments/sorlova/AITHENA/NewStage/VideoMAE_results/vis_samples", exist_ok=True)
+        for i, image_window in enumerate(dataset):
+            img = create_image_matrix(images=image_window, grid_size=(4,4))
+            img.save(f"/mnt/experiments/sorlova/AITHENA/NewStage/VideoMAE_results/vis_samples/sample_{i}.jpg")
+            print(f"Saved {i}!")
 
     exit(0)

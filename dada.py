@@ -283,6 +283,7 @@ class FrameClsDataset_DADA(Dataset):
             input_size=(self.crop_size, self.crop_size),
             auto_augment=args.aa,
             interpolation=args.train_interpolation,
+            do_transforms=video_transforms.DRIVE_TRANSFORMS
         )
 
         buffer = [transforms.ToPILImage()(frame) for frame in buffer]
@@ -531,6 +532,7 @@ class VideoMAE_DADA2K(torch.utils.data.Dataset):
                  video_loader=False,
                  use_decord=False,
                  lazy_init=False,
+                 short_size=320,
                  args=None
                  ):
 
@@ -550,6 +552,7 @@ class VideoMAE_DADA2K(torch.utils.data.Dataset):
         self.use_decord = use_decord
         self.transform = transform
         self.lazy_init = lazy_init
+        self.short_size = short_size
         self.ttc_TT = args.ttc_TT if hasattr(args, "ttc_TT") else 2.
         self.ttc_TA = args.ttc_TA if hasattr(args, "ttc_TA") else 1.
         self.sequencer = RegularSequencerWithStart(seq_frequency=self.tfps, seq_length=self.view_len, step=self.view_step)
@@ -665,11 +668,11 @@ class VideoMAE_DADA2K(torch.utils.data.Dataset):
                 if short_size is not None:
                     h, w, _ = img.shape
                     if h < w:
-                        scale = 320 / h
-                        new_h, new_w = 320, int(w * scale)
+                        scale = short_size / h
+                        new_h, new_w = short_size, int(w * scale)
                     else:
-                        scale = 320 / w
-                        new_h, new_w = int(h * scale), 320
+                        scale = short_size / w
+                        new_h, new_w = int(h * scale), short_size
                     img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
                 # Convert OpenCV image (numpy) to PIL.Image and append to view
                 img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -680,7 +683,7 @@ class VideoMAE_DADA2K(torch.utils.data.Dataset):
     def __getitem__(self, index):
         sample = self.dataset_samples[index]
         if self.video_loader:
-            buffer, _, __ = self.load_images(sample, short_size=320)  # T H W C
+            buffer, _, __ = self.load_images(sample, short_size=self.short_size)  # T H W C
             if len(buffer) == 0:
                 while len(buffer) == 0:
                     warnings.warn("video {} not correctly loaded during training".format(sample))

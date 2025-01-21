@@ -478,7 +478,7 @@ class RandAugment:
         return img
 
 
-def rand_augment_transform(config_str, hparams):
+def rand_augment_transform(config_str, hparams, do_transforms = None):
     """
     RandAugment: Practical automated data augmentation... - https://arxiv.org/abs/1909.13719
 
@@ -522,6 +522,8 @@ def rand_augment_transform(config_str, hparams):
             weight_idx = int(val)
         else:
             assert NotImplementedError
+    if do_transforms is not None:
+        transforms = do_transforms
     ra_ops = rand_augment_ops(
         magnitude=magnitude, hparams=hparams, transforms=transforms
     )

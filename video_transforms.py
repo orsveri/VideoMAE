@@ -31,6 +31,21 @@ _pil_interpolation_to_str = {
 _RANDOM_INTERPOLATION = (Image.BILINEAR, Image.BICUBIC)
 
 
+DRIVE_TRANSFORMS = [
+    "AutoContrast",
+    "Equalize",
+    "Invert",
+    "Rotate",
+    #"Solarize",
+    "Color",
+    "Contrast",
+    "Brightness",
+    "Sharpness",
+    "ShearX",
+    "ShearY",
+]
+
+
 def _pil_interp(method):
     if method == "bicubic":
         return Image.BICUBIC
@@ -623,6 +638,7 @@ def create_random_augment(
     input_size,
     auto_augment=None,
     interpolation="bilinear",
+    do_transforms=None
 ):
     """
     Get video randaug transform.
@@ -650,7 +666,7 @@ def create_random_augment(
             aa_params["interpolation"] = _pil_interp(interpolation)
         if auto_augment.startswith("rand"):
             return transforms.Compose(
-                [rand_augment_transform(auto_augment, aa_params)]
+                [rand_augment_transform(auto_augment, aa_params, do_transforms)]
             )
     raise NotImplementedError
 
@@ -1294,12 +1310,16 @@ def pad_wide_clips(h, w, crop_size):
     padding_mode = _PAD_MODES[choice]
     if padding_mode is not None:
         h_to_sq = w - h
-        pad_top = torch.randint(0, 0.5, (1,)).item() * h_to_sq
-        pad_bottom = torch.randint(0, 0.5, (1,)).item() * h_to_sq
+        pad_top = int(round(torch.rand(1).item() * 0.5 * h_to_sq))
+        pad_bottom = int(round(torch.rand(1).item() * 0.5 * h_to_sq))
+        a = torch.rand(1).item() * 0.7
         if padding_mode == "reflect":
-            do_pad = lambda x: cv2.resize(
-                cv2.copyMakeBorder(x, pad_top, pad_bottom, 0, 0, cv2.BORDER_REFLECT),
-                dsize=(crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
+            def _do_pad(x, alpha):
+                reflect_padded = cv2.copyMakeBorder(x, pad_top, pad_bottom, 0, 0, cv2.BORDER_REFLECT)
+                black_padded = cv2.copyMakeBorder(x, pad_top, pad_bottom, 0, 0, cv2.BORDER_CONSTANT, value=[0, 0, 0])
+                blended = cv2.addWeighted(reflect_padded, alpha, black_padded, 1 - alpha, 0)
+                return cv2.resize(blended, dsize=(crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
+            do_pad = lambda x: _do_pad(x, alpha=a)
         elif padding_mode == "replicate":
             do_pad = lambda x: cv2.resize(
                 cv2.copyMakeBorder(x, pad_top, pad_bottom, 0, 0, cv2.BORDER_REPLICATE),
@@ -1313,5 +1333,6 @@ def pad_wide_clips(h, w, crop_size):
             raise ValueError
     else:
         do_pad = lambda x: cv2.resize(x, dsize=(crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
-        return do_pad
+
+    return do_pad
 
