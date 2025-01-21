@@ -364,6 +364,8 @@ def main(args, ds_init):
         for key in all_keys:
             if key.startswith('backbone.'):
                 new_dict[key[9:]] = checkpoint_model[key]
+            elif key.startswith('encoder.norm'):
+                new_dict[key.replace("encoder.norm", "fc_norm")] = checkpoint_model[key]
             elif key.startswith('encoder.'):
                 new_dict[key[8:]] = checkpoint_model[key]
             else:

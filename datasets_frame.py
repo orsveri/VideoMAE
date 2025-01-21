@@ -37,10 +37,40 @@ class DataAugmentationForVideoMAE(object):
         repr += "  Masked position generator = %s,\n" % str(self.masked_position_generator)
         repr += ")"
         return repr
+    
+
+class DataAugmentationForVideoMAE_NoCrop(object):
+    def __init__(self, args):
+        self.input_mean = [0.485, 0.456, 0.406]  # IMAGENET_DEFAULT_MEAN
+        self.input_std = [0.229, 0.224, 0.225]  # IMAGENET_DEFAULT_STD
+        normalize = GroupNormalize(self.input_mean, self.input_std)
+        self.transform = transforms.Compose([                            
+            Stack(roll=False),
+            ToTorchFormatTensor(div=True),
+            normalize,
+        ])
+        if args.mask_type == 'tube':
+            self.masked_position_generator = TubeMaskingGenerator(
+                args.window_size, args.mask_ratio
+            )
+
+    def __call__(self, images):
+        process_data, _ = self.transform(images)
+        return process_data, self.masked_position_generator()
+
+    def __repr__(self):
+        repr = "(DataAugmentationForVideoMAE,\n"
+        repr += "  transform = %s,\n" % str(self.transform)
+        repr += "  Masked position generator = %s,\n" % str(self.masked_position_generator)
+        repr += ")"
+        return repr
 
 
 def build_pretraining_dataset(is_train, args):
-    transform = DataAugmentationForVideoMAE(args)
+    _transform = DataAugmentationForVideoMAE(args)
+    _transform_like_finetune = DataAugmentationForVideoMAE_NoCrop(args)
+    transform = _transform_like_finetune if args.transforms_finetune_align else _transform
+
     if args.data_set == 'DoTA':
         anno_path = None
         orig_fps = 10

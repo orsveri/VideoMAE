@@ -424,8 +424,8 @@ _RAND_INCREASING_TRANSFORMS = [
 # They may not result in increased performance, but could likely be tuned to so.
 _RAND_CHOICE_WEIGHTS_0 = {
     "Rotate": 0.3,
-    "ShearX": 0.2,
-    "ShearY": 0.2,
+    "ShearX": 0.1, # 0.2,
+    "ShearY": 0.1, # 0.2,
     "TranslateXRel": 0.1,
     "TranslateYRel": 0.1,
     "Color": 0.025,

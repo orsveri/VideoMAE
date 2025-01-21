@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import cv2
 import math
 import numpy as np
 import random
@@ -1279,3 +1280,38 @@ class Normalize(object):
 
     def __repr__(self):
         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
+    
+
+def pad_wide_clips(h, w, crop_size):
+    _PAD_MODES = (
+        None, None, None, None, None, 
+        'black', 'black',
+        'color',
+        'reflect', 'reflect',
+        'replicate', 'replicate'
+        )
+    choice = torch.randint(0, len(_PAD_MODES), (1,)).item()
+    padding_mode = _PAD_MODES[choice]
+    if padding_mode is not None:
+        h_to_sq = w - h
+        pad_top = torch.randint(0, 0.5, (1,)).item() * h_to_sq
+        pad_bottom = torch.randint(0, 0.5, (1,)).item() * h_to_sq
+        if padding_mode == "reflect":
+            do_pad = lambda x: cv2.resize(
+                cv2.copyMakeBorder(x, pad_top, pad_bottom, 0, 0, cv2.BORDER_REFLECT),
+                dsize=(crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
+        elif padding_mode == "replicate":
+            do_pad = lambda x: cv2.resize(
+                cv2.copyMakeBorder(x, pad_top, pad_bottom, 0, 0, cv2.BORDER_REPLICATE),
+                dsize=(crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
+        elif padding_mode in ('black', 'color'):
+            color = torch.randint(0, 256, (3,)).tolist() if padding_mode == 'color' else [0, 0, 0]
+            do_pad = lambda x: cv2.resize(
+                cv2.copyMakeBorder(x, pad_top, pad_bottom, 0, 0, cv2.BORDER_CONSTANT, value=color),
+                dsize=(crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
+        else:
+            raise ValueError
+    else:
+        do_pad = lambda x: cv2.resize(x, dsize=(crop_size, crop_size), interpolation=cv2.INTER_CUBIC)
+        return do_pad
+

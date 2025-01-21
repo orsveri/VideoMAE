@@ -218,44 +218,15 @@ class FrameClsDataset_DoTA(Dataset):
         else:
             raise NameError('mode {} unkown'.format(self.mode))
 
-
     def _aug_frame(
         self,
         buffer,
         args,
     ):
-
+        h, w, _ = buffer[0].shape[0]
         # Perform data augmentation - vertical padding and horizontal flip
         # add padding
-        _PAD_MODES = ([None, None, None, None,
-                       'black', 'black',
-                       'color',
-                       'reflect', 'reflect',
-                       'replicate', 'replicate'])
-        choice = torch.randint(0, len(_PAD_MODES), (1,)).item()
-        padding_mode = _PAD_MODES[choice]
-        if padding_mode is not None:
-            padding_top = 0.
-            padding_bottom = 0.
-            h_top = int(buffer[0].shape[0] * padding_top)
-            h_bot = int(buffer[0].shape[1] * padding_bottom)
-            if padding_mode == "reflect":
-                do_pad = lambda x: cv2.resize(
-                    cv2.copyMakeBorder(x, h_top, h_bot, 0, 0, cv2.BORDER_REFLECT),
-                    dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
-            elif padding_mode == "replicate":
-                do_pad = lambda x: cv2.resize(
-                    cv2.copyMakeBorder(x, h_top, h_bot, 0, 0, cv2.BORDER_REPLICATE),
-                    dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
-            elif padding_mode in ('black', 'color'):
-                color = torch.randint(0, 256, (3,)).tolist() if padding_mode == 'color' else [0, 0, 0]
-                do_pad = lambda x: cv2.resize(
-                    cv2.copyMakeBorder(x, h_top, h_bot, 0, 0, cv2.BORDER_CONSTANT, value=color),
-                    dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
-            else:
-                raise ValueError
-        else:
-            do_pad = lambda x: cv2.resize(x, dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
+        do_pad = video_transforms.pad_wide_clips(h, w, self.crop_size)
         buffer = [do_pad(img) for img in buffer]
 
         aug_transform = video_transforms.create_random_augment(
@@ -590,6 +561,11 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
             self._prepare_views()
             if len(self.dataset_samples) == 0:
                 raise RuntimeError("Found 0 video clips in subfolders of: " + data_path)
+            
+        if args.transforms_finetune_align:
+            self.__getitem__ = self._getitem
+        else:
+            self.__getitem__ = self._getitem_orig
 
     def _read_anno(self):
         clip_names = None
@@ -642,6 +618,7 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
         smoothed_label_array = []
         sequencer = RegularSequencer(seq_frequency=self.tfps, seq_length=self.view_len, step=self.view_step)
         N = len(self.clip_names)
+        N = 100
         for i in range(N):
             timesteps = self.clip_timesteps[i]
             sequences = sequencer.get_sequences(timesteps_nb=len(timesteps), input_frequency=self.ofps)
@@ -685,8 +662,86 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
                 view.append(img)
         #view = np.stack(view, axis=0)
         return view, clip_name, filenames[-1]
+    
+    def load_images_cv2(self, dataset_sample, short_size=320):
+        clip_id, frame_seq = dataset_sample
+        clip_name = self.clip_names[clip_id]
+        timesteps = [self.clip_timesteps[clip_id][idx] for idx in frame_seq]
+        filenames = [f"{str(ts).zfill(6)}.jpg" for ts in timesteps]
+        view = []
+        with zipfile.ZipFile(os.path.join(self.data_path, "frames", clip_name, "images.zip"), 'r') as zipf:
+            for fname in filenames:
+                with zipf.open(fname) as file:
+                    file_bytes = np.frombuffer(file.read(), np.uint8)
+                    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                if img is None:
+                    print("Image doesn't exist! ", fname)
+                    exit(1)
+                img = cv2.resize(img, dsize=(0, 0), fx=0.5, fy=0.5, interpolation=cv2.INTER_CUBIC)
+                # resze
+                if short_size is not None:
+                    h, w, _ = img.shape
+                    if h < w:
+                        scale = 320 / h
+                        new_h, new_w = 320, int(w * scale)
+                    else:
+                        scale = 320 / w
+                        new_h, new_w = int(h * scale), 320
+                    img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                view.append(img)
+        #view = np.stack(view, axis=0)
+        return view, clip_name, filenames[-1]
 
-    def __getitem__(self, index):
+    def _aug_frame(
+        self,
+        buffer,
+        args,
+    ):
+        h, w, _ = buffer[0].shape[0]
+        # Perform data augmentation - padding
+        do_pad = video_transforms.pad_wide_clips(h, w, self.crop_size)
+        buffer = [do_pad(img) for img in buffer]
+
+        aug_transform = video_transforms.create_random_augment(
+            input_size=(self.crop_size, self.crop_size),
+            auto_augment=args.aa,
+            interpolation=args.train_interpolation,
+        )
+
+        buffer = [transforms.ToPILImage()(frame) for frame in buffer]
+        buffer = aug_transform(buffer)
+        buffer = [transforms.ToTensor()(img) for img in buffer]
+        buffer = torch.stack(buffer) # T C H W
+        buffer = buffer.permute(0, 2, 3, 1) # T H W C
+        # T H W C 
+        buffer = tensor_normalize(
+            buffer, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
+        )
+        # T H W C -> C T H W.
+        buffer = buffer.permute(3, 0, 1, 2)
+
+        return buffer
+
+    def _getitem(self, index):
+        sample = self.dataset_samples[index]
+        if self.video_loader:
+            buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)  # T H W C
+            if len(buffer) == 0:
+                while len(buffer) == 0:
+                    warnings.warn("video {} not correctly loaded during training".format(sample))
+                    index = np.random.randint(self.__len__())
+                    sample = self.dataset_samples[index]
+                    buffer, _, __ = self.load_images_cv2(sample, short_size=320)
+
+        buffer = self._aug_frame(buffer, args)
+        #process_data, mask = self.transform((buffer, None))  # T*C,H,W
+        # T*C,H,W -> T,C,H,W -> C,T,H,W
+        #process_data = process_data.view((self.view_len, 3) + process_data.size()[-2:]).transpose(0, 1)
+        #return (process_data, mask)
+        return buffer
+    
+    def _getitem_orig(self, index):
         sample = self.dataset_samples[index]
         if self.video_loader:
             buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)  # T H W C
@@ -713,12 +768,13 @@ class MockArgs:
         self.mask_type = 'tube'  # Masking type, 'tube' in this case
         self.window_size = (8, 14, 14)  # Example window size for TubeMaskingGenerator
         self.mask_ratio = 0.90  # Example mask ratio
+        self.transforms_finetune_align = True
 
 
 if __name__ == "__main__":
-    from datasets import DataAugmentationForVideoMAE
+    from datasets_frame import DataAugmentationForVideoMAE, DataAugmentationForVideoMAE_NoCrop
     args = MockArgs()
-    tf = DataAugmentationForVideoMAE(args)
+    tf = DataAugmentationForVideoMAE_NoCrop(args)
 
     dataset = VideoMAE_DoTA(
         anno_path='all_split.txt',
@@ -747,6 +803,10 @@ if __name__ == "__main__":
         print(f"item {u}: {c} times")
 
     item = dataset[0]
-    print("\nitem 0: \n", item)
+    #print("\nitem 0: \n", item)
+
+    for item in dataset:
+        item = dataset[0]
+        cv2.imwrite("_{}.jpg", item)
 
     exit(0)
