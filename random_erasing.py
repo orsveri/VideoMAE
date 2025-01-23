@@ -48,7 +48,7 @@ class RandomErasing:
         probability=0.5,
         min_area=0.02,
         max_area=1 / 3,
-        min_aspect=0.3,
+        min_aspect=0.01,
         max_aspect=None,
         mode="const",
         min_count=1,

@@ -822,7 +822,84 @@ def collect_grad_norms(model, num_layers=12, num_heads=6):
         if proj_bias.grad is not None:
             proj_grad_norms[layer_idx, 1] = proj_bias.grad.norm().item()
 
-    return qkv_grad_norms, proj_grad_norms, patch_embed_grad_norms
+    return np.nan_to_num(qkv_grad_norms), np.nan_to_num(proj_grad_norms), np.nan_to_num(patch_embed_grad_norms)
+
+
+def collect_grad_norms_pretrain(model, num_layers=12, num_heads=6):
+    """
+    Collects gradients for:
+      - Q, K, V weights and Q/V biases into one array.
+      - Projection weights and biases into another array.
+      - Patch embedding projection weights and biases into a separate array.
+
+    Args:
+        model (torch.nn.Module): The ViT-S model.
+        num_layers (int): Number of transformer layers in the model.
+        num_heads (int): Number of attention heads per layer.
+
+    Returns:
+        tuple:
+            - numpy.ndarray: Array of shape (num_layers, num_heads, 5),
+              where the last dimension corresponds to:
+              [Q weight, K weight, V weight, Q bias, V bias].
+            - numpy.ndarray: Array of shape (num_layers, 2),
+              where the last dimension corresponds to:
+              [Projection weight, Projection bias].
+            - numpy.ndarray: Array of shape (2,), corresponding to:
+              [Patch embedding weight, Patch embedding bias].
+    """
+    # For Q, K, V weights and Q, V biases
+    qkv_grad_norms = np.zeros((num_layers, num_heads, 5))  # [Q weight, K weight, V weight, Q bias, V bias]
+
+    # For projection weights and biases
+    proj_grad_norms = np.zeros((num_layers, 2))  # [Projection weight, Projection bias]
+
+    # For patch embedding projection weights and biases
+    patch_embed_grad_norms = np.zeros(2)  # [Patch embed weight, Patch embed bias]
+
+    # Collect patch embedding gradients
+    if hasattr(model.module.encoder.patch_embed, 'proj'):
+        if model.module.encoder.patch_embed.proj.weight.grad is not None:
+            patch_embed_grad_norms[0] = model.module.encoder.patch_embed.proj.weight.grad.norm().item()
+        if model.module.encoder.patch_embed.proj.bias is not None and model.module.encoder.patch_embed.proj.bias.grad is not None:
+            patch_embed_grad_norms[1] = model.module.encoder.patch_embed.proj.bias.grad.norm().item()
+
+    for layer_idx, block in enumerate(model.module.encoder.blocks):  # Iterate over transformer layers
+        # Handle QKV weight gradients
+        qkv_weight = block.attn.qkv.weight  # Shape: [3 * embed_dim, embed_dim]
+        if qkv_weight.grad is not None:
+            embed_dim = qkv_weight.shape[1]
+            qkv_grad = qkv_weight.grad.view(3, num_heads, embed_dim // num_heads, embed_dim)
+            for head_idx in range(num_heads):
+                for qkv_idx in range(3):  # 0: Q, 1: K, 2: V
+                    qkv_grad_norms[layer_idx, head_idx, qkv_idx] = qkv_grad[qkv_idx, head_idx].norm().item()
+
+        # Handle Q bias gradients
+        q_bias = getattr(block.attn, 'q_bias', None)
+        if q_bias is not None and q_bias.grad is not None:
+            q_bias_grad = q_bias.grad.view(num_heads, -1)  # Reshape to match heads
+            for head_idx in range(num_heads):
+                qkv_grad_norms[layer_idx, head_idx, 3] = q_bias_grad[head_idx].norm().item()
+
+        # Handle V bias gradients
+        v_bias = getattr(block.attn, 'v_bias', None)
+        if v_bias is not None and v_bias.grad is not None:
+            v_bias_grad = v_bias.grad.view(num_heads, -1)  # Reshape to match heads
+            for head_idx in range(num_heads):
+                qkv_grad_norms[layer_idx, head_idx, 4] = v_bias_grad[head_idx].norm().item()
+
+        # Handle projection weights
+        proj_weight = block.attn.proj.weight
+        if proj_weight.grad is not None:
+            proj_grad_norms[layer_idx, 0] = proj_weight.grad.norm().item()
+
+        # Handle projection bias
+        proj_bias = block.attn.proj.bias
+        if proj_bias.grad is not None:
+            proj_grad_norms[layer_idx, 1] = proj_bias.grad.norm().item()
+
+    return np.nan_to_num(qkv_grad_norms), np.nan_to_num(proj_grad_norms), np.nan_to_num(patch_embed_grad_norms)
+
 
 
 # class TemporalProximityLoss(nn.Module):
@@ -962,4 +1039,35 @@ def calculate_regression_metrics(probs_anomaly, smooth_labels):
     mse = torch.mean((probs_anomaly - smooth_labels) ** 2)
     mae = torch.mean(torch.abs(probs_anomaly - smooth_labels))
     return mse, mae
+
+
+class ShortDistributedSampler(torch.utils.data.DistributedSampler):
+    def __init__(self, dataset, num_samples_per_epoch, **kwargs):
+        """
+        A custom DistributedSampler to limit the number of samples per epoch.
+
+        Args:
+            dataset (Dataset): The dataset to sample from.
+            num_samples_per_epoch (int): Number of samples per epoch.
+            **kwargs: Additional arguments for DistributedSampler (e.g., num_replicas, rank, shuffle, seed).
+        """
+        super().__init__(dataset, drop_last=True, **kwargs)
+        self.num_samples_per_epoch = num_samples_per_epoch
+        self.num_samples = int(self.num_samples_per_epoch // self.num_replicas)
+        self.total_size = self.num_samples * self.num_replicas
+
+    def __iter__(self):
+        # Get all indices for this epoch
+        indices = list(super().__iter__())
+
+        # Limit the indices to num_samples_per_epoch
+        if len(indices) > self.total_size:
+            indices = indices[:self.total_size]
+
+        return iter(indices)
+
+    def __len__(self):
+        """Number of samples per epoch for this rank."""
+        return self.num_samples
+
 

@@ -84,6 +84,10 @@ def get_args():
                         help='Color jitter factor (default: 0.4)')
     parser.add_argument('--train_interpolation', type=str, default='bicubic',
                         help='Training interpolation (random, bilinear, bicubic default: "bicubic")')
+    parser.add_argument('--aa', type=str, default='rand-m3-n3-mstd0.5-inc1', metavar='NAME',
+                        help='Use AutoAugment policy. "v0" or "original". " + "(default: rand-m3-n3-mstd0.5-inc1)'),
+    parser.add_argument('--transforms_finetune_align', action='store_true')
+    parser.set_defaults(transforms_finetune_align=False)
 
     # Dataset parameters
     parser.add_argument('--data_path', default='/path/to/list_kinetics-400', type=str,
@@ -106,6 +110,7 @@ def get_args():
     parser.add_argument('--auto_resume', action='store_true')
     parser.add_argument('--no_auto_resume', action='store_false', dest='auto_resume')
     parser.set_defaults(auto_resume=True)
+    parser.add_argument('--nb_samples_per_epoch', default=0, type=int)
 
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
@@ -162,19 +167,26 @@ def main(args):
 
     # get dataset
     dataset_train = build_pretraining_dataset(is_train=True, args=args)
+    print(f"Dataset is ready, full len: {len(dataset_train)}")
 
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
     sampler_rank = global_rank
 
     total_batch_size = args.batch_size * num_tasks
-    num_training_steps_per_epoch = len(dataset_train) // total_batch_size
 
-    sampler_train = torch.utils.data.DistributedSampler(
-        dataset_train, num_replicas=num_tasks, rank=sampler_rank, shuffle=True
-    )
+    if args.nb_samples_per_epoch and args.nb_samples_per_epoch < len(dataset_train):
+        sampler_train = utils.ShortDistributedSampler(
+            dataset_train, num_replicas=num_tasks, rank=sampler_rank, shuffle=True,
+            num_samples_per_epoch=args.nb_samples_per_epoch
+        )
+        num_training_steps_per_epoch = sampler_train.total_size // total_batch_size
+    else:
+        sampler_train = torch.utils.data.DistributedSampler(
+            dataset_train, num_replicas=num_tasks, rank=sampler_rank, shuffle=True,
+        )
+        num_training_steps_per_epoch = len(dataset_train) // total_batch_size
     print("Sampler_train = %s" % str(sampler_train))
-
 
     if global_rank == 0 and args.log_dir is not None:
         os.makedirs(args.log_dir, exist_ok=True)
@@ -259,6 +271,7 @@ def main(args):
     print("Model = %s" % str(model_without_ddp))
     print('number of params: {} M'.format(n_parameters / 1e6))
 
+    args._base_lr = args.lr
     args.lr = args.lr * total_batch_size / 256
     args.min_lr = args.min_lr * total_batch_size / 256
     args.warmup_lr = args.warmup_lr * total_batch_size / 256
@@ -289,6 +302,8 @@ def main(args):
     if args.output_dir and utils.is_main_process():
         with open(os.path.join(args.output_dir, "params.json"), mode="w") as f:
             json.dump(vars(args), f, indent=2)
+        grad_norm_dir = os.path.join(args.output_dir, "grad_norms")
+        os.makedirs(grad_norm_dir, exist_ok=True)
 
     utils.auto_load_model(
         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
@@ -300,7 +315,7 @@ def main(args):
             data_loader_train.sampler.set_epoch(epoch)
         if log_writer is not None:
             log_writer.set_step(epoch * num_training_steps_per_epoch)
-        train_stats = train_one_epoch(
+        train_stats, grad_norms = train_one_epoch(
             model, data_loader_train,
             optimizer, device, epoch, loss_scaler,
             args.clip_grad, log_writer=log_writer,
@@ -310,6 +325,12 @@ def main(args):
             patch_size=patch_size[0],
             normlize_target=args.normlize_target,
         )
+
+        if utils.is_main_process():
+            assert np.max(grad_norms["qkv"]) > 0., "grad_norms < 0!! "
+            print(f"Epoch {epoch}, max grad_norms qkv: {np.max(grad_norms["qkv"]):.2f}")
+            np.savez(os.path.join(grad_norm_dir, f"gradnorm_ep{epoch}.npz"), **grad_norms)
+
         if log_writer is not None:
             log_writer.update(iter=epoch * num_training_steps_per_epoch, head="my_train", step=epoch)
             log_writer.update(epoch=epoch, head="my_train", step=epoch * num_training_steps_per_epoch)

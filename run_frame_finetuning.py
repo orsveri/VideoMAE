@@ -92,7 +92,7 @@ def get_args():
                         help='Color jitter factor (default: 0.4)')
     parser.add_argument('--num_sample', type=int, default=2,
                         help='Repeated_aug (default: 2)')
-    parser.add_argument('--aa', type=str, default='rand-m7-n4-mstd0.5-inc1', metavar='NAME',
+    parser.add_argument('--aa', type=str, default='rand-m3-n3-mstd0.5-inc1', metavar='NAME',
                         help='Use AutoAugment policy. "v0" or "original". " + "(default: rand-m7-n4-mstd0.5-inc1)'),
     parser.add_argument('--smoothing', type=float, default=0.1,
                         help='Label smoothing (default: 0.1)')
@@ -565,6 +565,8 @@ def main(args, ds_init):
             with_ttc=with_ttc
         )
         # save grad norms
+        assert np.max(grad_norms["qkv"]) > 0., "grad_norms < 0!! "
+        print(f"Epoch {epoch}, max grad_norms qkv: {np.max(grad_norms["qkv"]):.2f}")
         np.savez(os.path.join(grad_norm_dir, f"gradnorm_ep{epoch}.npz"), **grad_norms)
 
         if log_writer is not None:

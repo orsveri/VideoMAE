@@ -1,12 +1,16 @@
 import gc
 import math
 import sys
+import numpy as np
 from typing import Iterable
 import torch
+import torch.distributed as dist
 import torch.nn as nn
-import utils
 from einops import rearrange
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+
+import utils
+from utils import gather_predictions, gather_predictions_nontensor
 
 
 def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: torch.optim.Optimizer,
@@ -21,6 +25,12 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
     print_freq = 10
 
     loss_func = nn.MSELoss()
+
+    # save grad norms
+    if_dist = dist.is_initialized()
+    qkv_grad_norms = np.zeros(shape=(12, 6, 5), dtype=np.float64)
+    proj_grad_norms = np.zeros(shape=(12, 2), dtype=np.float64)
+    patch_embed_grad_norms = np.zeros(shape=(2,), dtype=np.float64)
 
     for step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         gc.collect()
@@ -71,7 +81,14 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
         is_second_order = hasattr(optimizer, 'is_second_order') and optimizer.is_second_order
         grad_norm = loss_scaler(loss, optimizer, clip_grad=max_norm,
                                 parameters=model.parameters(), create_graph=is_second_order)
+        grad_norms = utils.collect_grad_norms_pretrain(model, num_layers=12, num_heads=6)
         loss_scale_value = loss_scaler.state_dict()["scale"]
+
+        if grad_norms is not None:
+            qkv_grad_norms_iter, proj_grad_norms_iter, patch_embed_grad_norms_iter = grad_norms
+            qkv_grad_norms += qkv_grad_norms_iter
+            proj_grad_norms += proj_grad_norms_iter
+            patch_embed_grad_norms += patch_embed_grad_norms_iter
 
         oshape = outputs.shape[0]
         del loss
@@ -113,10 +130,26 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
 
         if lr_scheduler is not None:
             lr_scheduler.step_update(start_steps + step)
+    
+    if if_dist:
+        qkv_grad_norms = gather_predictions_nontensor(qkv_grad_norms, world_size=dist.get_world_size())
+        proj_grad_norms = gather_predictions_nontensor(proj_grad_norms, world_size=dist.get_world_size())
+        patch_embed_grad_norms = gather_predictions_nontensor(patch_embed_grad_norms, world_size=dist.get_world_size())
+        qkv_grad_norms = np.sum(qkv_grad_norms, axis=0)
+        proj_grad_norms = np.sum(proj_grad_norms, axis=0)
+        patch_embed_grad_norms = np.sum(patch_embed_grad_norms, axis=0)
+
+    assert np.max(qkv_grad_norms) > 0., "Point 1"
+    qkv_grad_norms = qkv_grad_norms / len(data_loader)
+    assert np.max(qkv_grad_norms) > 0., "Point 2"
+    proj_grad_norms = proj_grad_norms / len(data_loader)
+    patch_embed_grad_norms = patch_embed_grad_norms / len(data_loader)
+    grad_norms = {"qkv": qkv_grad_norms.copy(), "proj": proj_grad_norms.copy(), "patch_embed": patch_embed_grad_norms.copy()}
+    
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, grad_norms
 
 
 def train_one_epoch_double(model: torch.nn.Module, data_loader1: Iterable, data_loader2: Iterable, optimizer: torch.optim.Optimizer,

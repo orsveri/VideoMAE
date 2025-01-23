@@ -452,7 +452,8 @@ class VideoMAE(torch.utils.data.Dataset):
                  video_loader=False,
                  use_decord=False,
                  lazy_init=False,
-                 manager=None):
+                 manager=None,
+                 args=None):
 
         super(VideoMAE, self).__init__()
         self.root = root
@@ -473,6 +474,7 @@ class VideoMAE(torch.utils.data.Dataset):
         self.use_decord = use_decord
         self.transform = transform
         self.lazy_init = lazy_init
+        self.args = args
 
         if not self.lazy_init:
             self.clips = self._make_dataset_snellius(root, setting)
@@ -610,7 +612,6 @@ class VideoMAE(torch.utils.data.Dataset):
                 self.skip_length // self.new_step, dtype=int)
         return offsets + 1, skip_offsets
 
-
     def decord_extract_frames(self, video_reader, frame_id_list, duration=None, video_name=None):
         sampled_list = []
         try:
@@ -632,7 +633,26 @@ class VideoMAE(torch.utils.data.Dataset):
         except:
             raise RuntimeError('Error occured in reading frames {} from video {} of duration {}.'.format(frame_id_list, video_name, duration))
         return sampled_list
+    
+    def decord_extract_frames_cv2(self, video_reader, frame_id_list, duration=None, video_name=None):
+        sampled_list = []
+        try:
+            video_data = video_reader.get_batch(frame_id_list).asnumpy()
+            # Resize frames while maintaining aspect ratio
+            for frame in video_data:
+                h, w, _ = frame.shape
+                if h < w:
+                    scale = 320 / h
+                    new_h, new_w = 320, int(w * scale)
+                else:
+                    scale = 320 / w
+                    new_h, new_w = int(h * scale), 320
 
+                resized_frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                sampled_list.append(cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB))
+        except:
+            raise RuntimeError('Error occured in reading frames {} from video {} of duration {}.'.format(frame_id_list, video_name, duration))
+        return sampled_list
 
     def _video_TSN_decord_batch_loader(self, directory, video_reader, duration, indices, skip_offsets):
         sampled_list = []

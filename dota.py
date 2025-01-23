@@ -223,7 +223,7 @@ class FrameClsDataset_DoTA(Dataset):
         buffer,
         args,
     ):
-        h, w, _ = buffer[0].shape[0]
+        h, w, _ = buffer[0].shape
         # Perform data augmentation - vertical padding and horizontal flip
         # add padding
         do_pad = video_transforms.pad_wide_clips(h, w, self.crop_size)
@@ -254,6 +254,7 @@ class FrameClsDataset_DoTA(Dataset):
                 mode=args.remode,
                 max_count=args.recount,
                 num_splits=args.recount,
+                max_area=0.1,
                 device="cpu",
             )
             buffer = buffer.permute(1, 0, 2, 3)
@@ -700,22 +701,21 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
         buffer,
         args,
     ):
+        h, w, _ = buffer[0].shape
+        # Perform data augmentation - padding
+        do_pad = video_transforms.pad_wide_clips(h, w, args.input_size)
+        buffer = [do_pad(img) for img in buffer]
         if torch.rand(1).item() > 0.3:
-            h, w, _ = buffer[0].shape
-            # Perform data augmentation - padding
-            do_pad = video_transforms.pad_wide_clips(h, w, args.input_size)
-            buffer = [do_pad(img) for img in buffer]
-
             aug_transform = video_transforms.create_random_augment(
                 input_size=(args.input_size, args.input_size),
                 auto_augment=args.aa,
                 interpolation=args.train_interpolation,
                 do_transforms=video_transforms.DRIVE_TRANSFORMS
             )
-
             buffer = [transforms.ToPILImage()(frame) for frame in buffer]
             buffer = aug_transform(buffer)
-
+        else:
+            buffer = [transforms.ToPILImage()(frame) for frame in buffer]
         return buffer
 
     def _getitem_finetune_align(self, index):
@@ -734,7 +734,6 @@ class VideoMAE_DoTA(torch.utils.data.Dataset):
         # T*C,H,W -> T,C,H,W -> C,T,H,W
         process_data = process_data.view((self.view_len, 3) + process_data.size()[-2:]).transpose(0, 1)
         return (process_data, mask)
-        return buffer
     
     def _getitem_orig(self, index):
         sample = self.dataset_samples[index]
@@ -806,7 +805,7 @@ if __name__ == "__main__":
     item = dataset[0]
     #print("\nitem 0: \n", item)
 
-    if True:
+    if False:
         from data_tools.vis_utils import create_image_matrix
         os.makedirs("/mnt/experiments/sorlova/AITHENA/NewStage/VideoMAE_results/vis_samples", exist_ok=True)
         for i, image_window in enumerate(dataset):

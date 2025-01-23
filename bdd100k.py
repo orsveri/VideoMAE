@@ -31,6 +31,10 @@ class VideoMAE_BDD100K(VideoMAE):
         self.tfps = target_fps
         self.sequencer = RegularSequencerWithStart(seq_frequency=self.tfps, seq_length=self.new_length, step=self.new_step)
         self._prepare_views()
+        if self.args.transforms_finetune_align:
+            self._getitem = self._getitem_finetune_align
+        else:
+            self._getitem = self._getitem_orig
 
     def _prepare_views(self):
         dataset_sequences = []
@@ -44,7 +48,7 @@ class VideoMAE_BDD100K(VideoMAE):
             dataset_sequences.extend([(i, seq) for seq in sequences])
         self.dataset_samples = dataset_sequences
 
-    def __getitem__(self, index):
+    def _getitem_orig(self, index):
         sample = self.dataset_samples[index]
         clip_id, frame_seq = sample
         clip_name = self.clips[clip_id]
@@ -61,8 +65,52 @@ class VideoMAE_BDD100K(VideoMAE):
                                                                                                     ,1)  # T*C,H,W -> T,C,H,W -> C,T,H,W
         return (process_data, mask)
     
+    def _getitem_finetune_align(self, index):
+        sample = self.dataset_samples[index]
+        clip_id, frame_seq = sample
+        clip_name = self.clips[clip_id]
+        video_name = os.path.join(self.root, clip_name)
 
-    def __getitem__check(self, index):
+        if self.video_loader:
+            decord_vr = decord.VideoReader(video_name, num_threads=1)
+            duration = len(decord_vr)
+            images = self.decord_extract_frames_cv2(video_reader=decord_vr, frame_id_list=frame_seq, duration=duration, video_name=video_name)
+            assert len(images) > 0
+
+        # augment
+        images = self._aug_frame(images, self.args)
+
+        process_data, mask = self.transform((images, None)) # T*C,H,W
+        process_data = process_data.view((self.new_length, 3) + process_data.size()[-2:]).transpose(0
+                                                                                                    ,1)  # T*C,H,W -> T,C,H,W -> C,T,H,W
+        return (process_data, mask)
+    
+    def _aug_frame(
+        self,
+        buffer,
+        args,
+    ):
+        h, w, _ = buffer[0].shape
+        do_pad = video_transforms.pad_wide_clips(h, w, args.input_size)
+        buffer = [do_pad(img) for img in buffer]
+        if torch.rand(1).item() > 0.3:
+            aug_transform = video_transforms.create_random_augment(
+                input_size=(args.input_size, args.input_size),
+                auto_augment=args.aa,
+                interpolation=args.train_interpolation,
+                do_transforms=video_transforms.DRIVE_TRANSFORMS
+            )
+            buffer = [transforms.ToPILImage()(frame) for frame in buffer]
+            buffer = aug_transform(buffer)
+        else:
+            buffer = [transforms.ToPILImage()(frame) for frame in buffer]
+        return buffer
+    
+    def __getitem__(self, index):
+        return self._getitem(index)
+    
+
+    def __getitem__check_clips(self, index):
         clip_name = self.clips[index]
         video_name = os.path.join(self.root, clip_name)
 
@@ -108,6 +156,33 @@ class VideoMAE_BDD100K(VideoMAE):
             clips.remove(iv)
         assert len(clips) > 0, f"Cannot find any video clips for the given split: {setting}"
         return clips
+
+
+class VideoMAE_BDD100K_prepared(VideoMAE_BDD100K):
+
+    def __init__(self, clips_txt, views_txt, **kwargs):
+        self.clips_txt = clips_txt
+        self.views_txt = views_txt
+        super().__init__(**kwargs)
+
+    def _make_dataset_snellius(self, directory, setting):
+        clips = []
+        # read from the file
+        with open(self.clips_txt, 'r') as file:
+            clips = [line.rstrip() for line in file]
+        assert len(clips) > 0, f"Cannot find any video clips for the given split: {setting}"
+        return clips
+    
+    def _prepare_views(self):
+        dataset_sequences = []
+        # read from the file
+        with open(self.views_txt, 'r') as file:
+            for line in file:
+                el1, el2 = line.strip().split(",", 1)
+                el1 = int(el1.strip())
+                el2 = [int(x.strip()) for x in el2.strip('[]').split(',')]
+                dataset_sequences.append([el1, el2])
+        self.dataset_samples = dataset_sequences
 
 
 class MockArgs:

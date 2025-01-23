@@ -225,10 +225,12 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         patch_embed_grad_norms = np.sum(patch_embed_grad_norms, axis=0)
     all_preds = torch.cat(preds, dim=0)
     all_labels = torch.cat(labels, dim=0)
+    assert np.max(qkv_grad_norms) > 0., "Point 1"
     qkv_grad_norms = qkv_grad_norms / len(data_loader)
+    assert np.max(qkv_grad_norms) > 0., "Point 2"
     proj_grad_norms = proj_grad_norms / len(data_loader)
     patch_embed_grad_norms = patch_embed_grad_norms / len(data_loader)
-    grad_norms = {"qkv": qkv_grad_norms, "proj": proj_grad_norms, "patch_embed": patch_embed_grad_norms}
+    grad_norms = {"qkv": qkv_grad_norms.copy(), "proj": proj_grad_norms.copy(), "patch_embed": patch_embed_grad_norms.copy()}
     my_metrics = {}
     metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(all_preds, all_labels)
     # Log them

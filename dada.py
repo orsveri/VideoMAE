@@ -96,6 +96,7 @@ class FrameClsDataset_DADA(Dataset):
         clip_ego = []
         clip_toa = []
         clip_ttc = []
+        clip_acc = []
         clip_smoothed_labels = []
 
         errors = []
@@ -118,15 +119,15 @@ class FrameClsDataset_DADA(Dataset):
                 framenames = natsorted([f for f in zipf.namelist() if os.path.splitext(f)[1]==".png"])
             timesteps = natsorted([int(os.path.splitext(f)[0].split("_")[-1]) for f in framenames])
             if_acc_video = int(row["whether an accident occurred (1/0)"])
-            if if_acc_video:
-                st = int(row["abnormal start frame"])
-                en = int(row["abnormal end frame"])
+            st = int(row["abnormal start frame"])
+            en = int(row["abnormal end frame"])
+            if st > -1 and en > -1:
                 binary_labels = [1 if st <= t <= en else 0 for t in timesteps]
             else:
                 binary_labels = [0 for t in timesteps]
             cat_labels = [l*clip_type for l in binary_labels]
             if_ego = clip_type in self.ego_categories
-            toa = row["accident frame"]
+            toa = int(row["accident frame"])
             ttc = compute_time_vector(binary_labels, fps=self.orig_fps, TT=self.ttc_TT, TA=self.ttc_TA)
             smoothed_labels = smooth_labels(labels=torch.Tensor(binary_labels), time_vector=ttc,
                                             before_limit=self.ttc_TT, after_limit=self.ttc_TA)
@@ -137,6 +138,7 @@ class FrameClsDataset_DADA(Dataset):
             clip_ego.append(if_ego)
             clip_toa.append(toa)
             clip_ttc.append(ttc)
+            clip_acc.append(if_acc_video)
             clip_smoothed_labels.append(smoothed_labels)
 
         for line in errors:
@@ -245,38 +247,10 @@ class FrameClsDataset_DADA(Dataset):
         buffer,
         args,
     ):
-
+        h, w, _ = buffer[0].shape
         # Perform data augmentation - vertical padding and horizontal flip
         # add padding
-        _PAD_MODES = ([None, None, None, None,
-                       'black', 'black',
-                       'color',
-                       'reflect', 'reflect',
-                       'replicate', 'replicate'])
-        choice = torch.randint(0, len(_PAD_MODES), (1,)).item()
-        padding_mode = _PAD_MODES[choice]
-        if padding_mode is not None:
-            padding_top = 0.
-            padding_bottom = 0.
-            h_top = int(buffer[0].shape[0] * padding_top)
-            h_bot = int(buffer[0].shape[1] * padding_bottom)
-            if padding_mode == "reflect":
-                do_pad = lambda x: cv2.resize(
-                    cv2.copyMakeBorder(x, h_top, h_bot, 0, 0, cv2.BORDER_REFLECT),
-                    dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
-            elif padding_mode == "replicate":
-                do_pad = lambda x: cv2.resize(
-                    cv2.copyMakeBorder(x, h_top, h_bot, 0, 0, cv2.BORDER_REPLICATE),
-                    dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
-            elif padding_mode in ('black', 'color'):
-                color = torch.randint(0, 256, (3,)).tolist() if padding_mode == 'color' else [0, 0, 0]
-                do_pad = lambda x: cv2.resize(
-                    cv2.copyMakeBorder(x, h_top, h_bot, 0, 0, cv2.BORDER_CONSTANT, value=color),
-                    dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
-            else:
-                raise ValueError
-        else:
-            do_pad = lambda x: cv2.resize(x, dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
+        do_pad = video_transforms.pad_wide_clips(h, w, self.crop_size)
         buffer = [do_pad(img) for img in buffer]
 
         aug_transform = video_transforms.create_random_augment(
@@ -679,8 +653,48 @@ class VideoMAE_DADA2K(torch.utils.data.Dataset):
                 view.append(img)
         #view = np.stack(view, axis=0)
         return view, clip_name, filenames[-1]
+    
+    def _aug_frame(
+        self,
+        buffer,
+        args,
+    ):
+        if torch.rand(1).item() > 0.3:
+            h, w, _ = buffer[0].shape
+            # Perform data augmentation - padding
+            do_pad = video_transforms.pad_wide_clips(h, w, args.input_size)
+            buffer = [do_pad(img) for img in buffer]
 
-    def __getitem__(self, index):
+            aug_transform = video_transforms.create_random_augment(
+                input_size=(args.input_size, args.input_size),
+                auto_augment=args.aa,
+                interpolation=args.train_interpolation,
+                do_transforms=video_transforms.DRIVE_TRANSFORMS
+            )
+
+            buffer = [transforms.ToPILImage()(frame) for frame in buffer]
+            buffer = aug_transform(buffer)
+
+        return buffer
+    
+    def _getitem_finetune_align(self, index):
+        sample = self.dataset_samples[index]
+        if self.video_loader:
+            buffer, _, __ = self.load_images_cv2(sample, short_size=self.short_size)  # T H W C
+            if len(buffer) == 0:
+                while len(buffer) == 0:
+                    warnings.warn("video {} not correctly loaded during training".format(sample))
+                    index = np.random.randint(self.__len__())
+                    sample = self.dataset_samples[index]
+                    buffer, _, __ = self.load_images_cv2(sample, short_size=self.short_size)
+
+        buffer = self._aug_frame(buffer, args)
+        process_data, mask = self.transform((buffer, None))  # T*C,H,W
+        # T*C,H,W -> T,C,H,W -> C,T,H,W
+        process_data = process_data.view((self.view_len, 3) + process_data.size()[-2:]).transpose(0, 1)
+        return (process_data, mask)
+
+    def _getitem_orig(self, index):
         sample = self.dataset_samples[index]
         if self.video_loader:
             buffer, _, __ = self.load_images(sample, short_size=self.short_size)  # T H W C

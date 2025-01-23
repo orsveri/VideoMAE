@@ -1300,7 +1300,7 @@ class Normalize(object):
 
 def pad_wide_clips(h, w, crop_size):
     _PAD_MODES = (
-        None, None, None, None, None, 
+        None, None, None, None, None,
         'black', 'black',
         'color',
         'reflect', 'reflect',
@@ -1308,8 +1308,8 @@ def pad_wide_clips(h, w, crop_size):
         )
     choice = torch.randint(0, len(_PAD_MODES), (1,)).item()
     padding_mode = _PAD_MODES[choice]
-    if padding_mode is not None:
-        h_to_sq = w - h
+    h_to_sq = w - h
+    if (padding_mode is not None) and h_to_sq > 0:
         pad_top = int(round(torch.rand(1).item() * 0.5 * h_to_sq))
         pad_bottom = int(round(torch.rand(1).item() * 0.5 * h_to_sq))
         a = torch.rand(1).item() * 0.7

@@ -5,7 +5,7 @@ from transforms import *
 from masking_generator import TubeMaskingGenerator
 from dota import FrameClsDataset_DoTA, VideoMAE_DoTA
 from dada import VideoMAE_DADA2K
-from bdd100k import VideoMAE_BDD100K
+from bdd100k import VideoMAE_BDD100K_prepared
 from dada import FrameClsDataset_DADA
 from datasets import build_pretraining_dataset as orig_build_pre
 
@@ -93,7 +93,8 @@ def build_pretraining_dataset(is_train, args):
             temporal_jitter=False,
             video_loader=True,
             use_decord=True,
-            lazy_init=False)
+            lazy_init=False,
+            args=args)
     elif args.data_set == 'DADA2K':
         anno_path = "DADA2K_my_split/all.txt"
         orig_fps = 30
@@ -110,12 +111,15 @@ def build_pretraining_dataset(is_train, args):
             temporal_jitter=False,
             video_loader=True,
             use_decord=True,
-            lazy_init=False
+            lazy_init=False,
+            args=args
         )
     elif args.data_set == 'BDD100K':
         anno_path = None
         orig_fps = 30
-        dataset = VideoMAE_BDD100K(
+        dataset = VideoMAE_BDD100K_prepared(
+            clips_txt="/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views/all_clips.txt",
+            views_txt="/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views/all_dataset_samples.txt",
             root=args.data_path,
             setting="/gpfs/work3/0/tese0625/datasets/bdd100k_splits/all.txt",
             video_ext='mov',
@@ -127,7 +131,8 @@ def build_pretraining_dataset(is_train, args):
             temporal_jitter=False,
             video_loader=True,
             use_decord=True,
-            lazy_init=False)
+            lazy_init=False,
+            args=args)
     else:
         dataset = orig_build_pre(args)
     print("Data Aug = %s" % str(transform))
