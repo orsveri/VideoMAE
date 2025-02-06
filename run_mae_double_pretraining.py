@@ -44,7 +44,8 @@ class CyclicDataLoader:
 
 def get_args():
     parser = argparse.ArgumentParser('VideoMAE pre-training script', add_help=False)
-    parser.add_argument('--batch_size', default=64, type=int)
+    parser.add_argument('--batch_size1', default=64, type=int)
+    parser.add_argument('--batch_size2', default=64, type=int)
     parser.add_argument('--epochs', default=800, type=int)
     parser.add_argument('--save_ckpt_freq', default=50, type=int)
 
@@ -108,6 +109,10 @@ def get_args():
                         help='Color jitter factor (default: 0.4)')
     parser.add_argument('--train_interpolation', type=str, default='bicubic',
                         help='Training interpolation (random, bilinear, bicubic default: "bicubic")')
+    parser.add_argument('--aa', type=str, default='rand-m3-n3-mstd0.5-inc1', metavar='NAME',
+                        help='Use AutoAugment policy. "v0" or "original". " + "(default: rand-m3-n3-mstd0.5-inc1)'),
+    parser.add_argument('--transforms_finetune_align', action='store_true')
+    parser.set_defaults(transforms_finetune_align=False)
 
     # Dataset parameters
     parser.add_argument('--data_path1', default='/path/to/list_kinetics-400', type=str,
@@ -116,10 +121,10 @@ def get_args():
                         help='dataset path')
     parser.add_argument('--view_fps', type=int, default=10)
     parser.add_argument('--data_set1', default='Kinetics-400',
-                        choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51', 'DoTA', 'DADA2K', 'BDD100K', 'image_folder'],
+                        choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51', 'DoTA', 'DADA2K', 'CAP-DATA', 'SHIFT', 'BDD100K', 'image_folder'],
                         type=str, help='dataset')
     parser.add_argument('--data_set2', default='Kinetics-400',
-                        choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51', 'DoTA', 'DADA2K', 'BDD100K', 'image_folder'],
+                        choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51', 'DoTA', 'DADA2K', 'CAP-DATA', 'SHIFT', 'BDD100K', 'image_folder'],
                         type=str, help='dataset')
     parser.add_argument('--imagenet_default_mean_and_std', default=True, action='store_true')
     parser.add_argument('--num_frames', type=int, default= 16)
@@ -136,6 +141,7 @@ def get_args():
     parser.add_argument('--auto_resume', action='store_true')
     parser.add_argument('--no_auto_resume', action='store_false', dest='auto_resume')
     parser.set_defaults(auto_resume=True)
+    parser.add_argument('--nb_samples_per_epoch', default=0, type=int)
 
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
@@ -202,25 +208,53 @@ def main(args):
     dataset_train1 = build_pretraining_dataset(is_train=True, args=args1)
     dataset_train2 = build_pretraining_dataset(is_train=True, args=args2)
 
+    print("Datasets are ready, full len: ")
+    print(f"\t - 1: {args.data_set1} {len(dataset_train1)}")
+    print(f"\t - 2: {args.data_set2} {len(dataset_train2)}")
+
     num_tasks = utils.get_world_size()
     global_rank = utils.get_rank()
     sampler_rank = global_rank
 
-    total_batch_size = args.batch_size * num_tasks
-    num_training_steps_per_epoch = max(len(dataset_train1), len(dataset_train2)) // total_batch_size * 2
+    total_batch_size = (args.batch_size1 + args.batch_size2) * num_tasks
+    num_batches = int(round(args.nb_samples_per_epoch / (args.batch_size1 + args.batch_size2)))
+    nb_samples_per_epoch1 = args.batch_size1 * num_batches
+    nb_samples_per_epoch2 = args.batch_size2 * num_batches
 
-    sampler_train1 = torch.utils.data.DistributedSampler(
-        dataset_train1, num_replicas=num_tasks, rank=sampler_rank, shuffle=True
-    )
-    sampler_train2 = torch.utils.data.DistributedSampler(
-        dataset_train2, num_replicas=num_tasks, rank=sampler_rank, shuffle=True
-    )
-    print("Sampler_train = ", str(sampler_train1), )
-    print(str(sampler_train2))
+    if args.nb_samples_per_epoch and (nb_samples_per_epoch1 < len(dataset_train1)):
+        sampler_train1 = utils.ShortDistributedSampler(
+            dataset_train1, num_replicas=num_tasks, rank=sampler_rank, shuffle=True,
+            num_samples_per_epoch=nb_samples_per_epoch1
+        )
+    else:
+        sampler_train1 = torch.utils.data.DistributedSampler(
+            dataset_train1, num_replicas=num_tasks, rank=sampler_rank, shuffle=True
+        )
+    if args.nb_samples_per_epoch and (nb_samples_per_epoch2 < len(dataset_train2)):
+        sampler_train2 = utils.ShortDistributedSampler(
+            dataset_train2, num_replicas=num_tasks, rank=sampler_rank, shuffle=True,
+            num_samples_per_epoch=nb_samples_per_epoch2
+        )
+    else:
+        sampler_train2 = torch.utils.data.DistributedSampler(
+            dataset_train2, num_replicas=num_tasks, rank=sampler_rank, shuffle=True
+        )
+    num_training_steps_per_epoch = (sampler_train1.total_size + sampler_train2.total_size) // total_batch_size
+    
+    print("Sampler_train = ")
+    print(f"\t- 1: {str(sampler_train1)}, len: {sampler_train1.total_size}")
+    print(f"\t- 2: {str(sampler_train2)}, len: {sampler_train2.total_size}")
+    print(f"num_training_steps_per_epoch: {num_training_steps_per_epoch}")
+
+    if global_rank == 0 and args.log_dir is not None:
+        os.makedirs(args.log_dir, exist_ok=True)
+        log_writer = utils.TensorboardLogger(log_dir=args.log_dir)
+    else:
+        log_writer = None
 
     data_loader_train1 = torch.utils.data.DataLoader(
         dataset_train1, sampler=sampler_train1,
-        batch_size=args.batch_size // 2,  # Half-batch for dataset 1
+        batch_size=args.batch_size1,  # Half-batch for dataset 1
         num_workers=args.num_workers // 2,
         pin_memory=args.pin_mem,
         drop_last=True,
@@ -229,7 +263,7 @@ def main(args):
     )
     data_loader_train2 = torch.utils.data.DataLoader(
         dataset_train2, sampler=sampler_train2,
-        batch_size=args.batch_size // 2,  # Half-batch for dataset 2
+        batch_size=args.batch_size2,  # Half-batch for dataset 2
         num_workers=args.num_workers // 2,
         pin_memory=args.pin_mem,
         drop_last=True,
@@ -241,15 +275,10 @@ def main(args):
         smaller_loader, larger_loader = data_loader_train1, data_loader_train2
     else:
         smaller_loader, larger_loader = data_loader_train2, data_loader_train1
+        if len(data_loader_train1) != len(data_loader_train2):
+            print(f"WARNING len(data_loader_train1) != len(data_loader_train2): {len(data_loader_train1)} != {len(data_loader_train2)}")
     # Cycle through the smaller DataLoader
     smaller_loader = CyclicDataLoader(smaller_loader)
-
-
-    if global_rank == 0 and args.log_dir is not None:
-        os.makedirs(args.log_dir, exist_ok=True)
-        log_writer = utils.TensorboardLogger(log_dir=args.log_dir)
-    else:
-        log_writer = None
 
     if args.from_ckpt:
         if args.from_ckpt.startswith('https'):
@@ -318,6 +347,7 @@ def main(args):
     print("Model = %s" % str(model_without_ddp))
     print('number of params: {} M'.format(n_parameters / 1e6))
 
+    args._base_lr = args.lr
     args.lr = args.lr * total_batch_size / 256
     args.min_lr = args.min_lr * total_batch_size / 256
     args.warmup_lr = args.warmup_lr * total_batch_size / 256
@@ -348,6 +378,8 @@ def main(args):
     if args.output_dir and utils.is_main_process():
         with open(os.path.join(args.output_dir, "params.json"), mode="w") as f:
             json.dump(vars(args), f, indent=2)
+        grad_norm_dir = os.path.join(args.output_dir, "grad_norms")
+        os.makedirs(grad_norm_dir, exist_ok=True)
 
     utils.auto_load_model(
         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
@@ -360,7 +392,7 @@ def main(args):
             smaller_loader.set_epoch(epoch)
         if log_writer is not None:
             log_writer.set_step(epoch * num_training_steps_per_epoch)
-        train_stats = train_one_epoch_double(
+        train_stats, grad_norms = train_one_epoch_double(
             model, larger_loader, smaller_loader,
             optimizer, device, epoch, loss_scaler,
             args.clip_grad, log_writer=log_writer,
@@ -370,14 +402,24 @@ def main(args):
             patch_size=patch_size[0],
             normlize_target=args.normlize_target,
         )
+
+        if utils.is_main_process():
+            assert np.max(grad_norms["qkv"]) > 0., "grad_norms < 0!! "
+            print(f"Epoch {epoch}, max grad_norms qkv: {np.max(grad_norms["qkv"]):.2f}")
+            np.savez(os.path.join(grad_norm_dir, f"gradnorm_ep{epoch}.npz"), **grad_norms)
+
         if log_writer is not None:
             log_writer.update(iter=epoch * num_training_steps_per_epoch, head="my_train", step=epoch)
             log_writer.update(epoch=epoch, head="my_train", step=epoch * num_training_steps_per_epoch)
         if args.output_dir:
             if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
-                utils.save_model(
-                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                    loss_scaler=loss_scaler, epoch=epoch)
+                utils.save_model_weights_only(
+                    args=args, epoch=epoch, model_without_ddp=model_without_ddp)
+            # save last model with all the parameters so we can continue from it
+            utils.save_model(
+                args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                loss_scaler=loss_scaler, epoch=epoch, epoch_name="last"
+                )
 
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                      'epoch': epoch, 'n_parameters': n_parameters}

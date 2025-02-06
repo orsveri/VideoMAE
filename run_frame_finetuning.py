@@ -148,11 +148,12 @@ def get_args():
     parser.add_argument('--nb_classes', default=400, type=int,
                         help='number of the classification types')
     parser.add_argument('--imagenet_default_mean_and_std', default=True, action='store_true')
-    parser.add_argument('--num_segments', type=int, default= 1)
-    parser.add_argument('--num_frames', type=int, default= 16)
-    parser.add_argument('--sampling_rate', type=int, default=4)
+    parser.add_argument('--num_segments', type=int, default=1)
+    parser.add_argument('--num_frames', type=int, default=16)
+    parser.add_argument('--sampling_rate', type=int, default=1)
+    parser.add_argument('--sampling_rate_val', type=int, default=-1)
     parser.add_argument('--view_fps', type=int, default=10)  # DoTA, DADA2k only!
-    parser.add_argument('--data_set', default='Kinetics-400', choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51','DoTA', 'DADA2k','image_folder'],
+    parser.add_argument('--data_set', default='Kinetics-400', choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51', 'DoTA', 'DoTA_half', 'DoTA_amnet', 'DADA2K', 'DADA2K_half','image_folder'],
                         type=str, help='dataset')
     parser.add_argument('--output_dir', default='',
                         help='path where to save, empty for no saving')
@@ -166,6 +167,7 @@ def get_args():
     parser.add_argument('--auto_resume', action='store_true')
     parser.add_argument('--no_auto_resume', action='store_false', dest='auto_resume')
     parser.set_defaults(auto_resume=True)
+    parser.add_argument('--nb_samples_per_epoch', default=0, type=int)
 
     parser.add_argument('--save_ckpt', action='store_true')
     parser.add_argument('--no_save_ckpt', action='store_false', dest='save_ckpt')
@@ -193,6 +195,9 @@ def get_args():
 
     parser.add_argument('--enable_deepspeed', action='store_true', default=False)
 
+    # TODO: EVAL
+    parser.add_argument('--eval_option', default='', type=str)
+
     known_args, _ = parser.parse_known_args()
 
     # fix
@@ -215,6 +220,46 @@ def get_args():
 
 
 def main(args, ds_init):
+    # EVAL ===============
+    # experiment_dict = {
+    # "1": ["baselines/bl1/lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 16],
+    # "2_14": ["baselines/bl1/dotaH_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 14],
+    # "2_15": ["baselines/bl1/dotaH_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 15],
+    # "3a_15": ["baselines/bl1/dada_lr5e4_b56x1_dsampl1val2_ld06_aam6n3", 15],
+    # "3b_7": ["baselines/bl1/dada_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 7],
+    # "3b_14": ["baselines/bl1/dada_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 14],
+    # "4_9": ["baselines/bl1/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 9],
+    # "5_5": ["baselines/bl2/lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 5],
+    # "6_8": ["baselines/bl2/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 8],
+    # "7_4": ["baselines/bl2/dada_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 4],
+    # "8_5": ["baselines/bl2/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 5],
+    # "13_14": ["ft_after_pretrain/pt_bdd/dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 14],
+    # "14_15": ["ft_after_pretrain/pt_bdd/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 15],
+    # "15_8": ["ft_after_pretrain/pt_bdd/dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 8],
+    # "16_8": ["ft_after_pretrain/pt_bdd/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 8],
+    # "16_13": ["ft_after_pretrain/pt_bdd/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 13]
+    # }
+    experiment_dict = {
+    "9_5": ["baselines/bl3/9_dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 5],
+    "10_6": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 6],
+    "10_18": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 18],
+    "11": ["baselines/bl3/dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 3],
+    "12": ["baselines/bl3/dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 1],
+    }
+    exprmnt = str(args.eval_option)
+    assert exprmnt in experiment_dict
+    log_part, exp_ep = experiment_dict[exprmnt]
+    base_log_dir = os.path.join("logs", log_part)
+    out_dir = os.path.join(base_log_dir, f"eval_{args.data_set}_ckpt_{exp_ep}")
+    args.finetune = os.path.join(base_log_dir, f"checkpoint-{exp_ep}.pth")
+    args.log_dir = out_dir
+    args.output_dir = out_dir
+    assert os.path.exists(args.finetune)
+
+    if args.eval:
+        os.makedirs(args.output_dir, exist_ok=True)
+    # =========================
+
     try:
         utils.init_distributed_mode(args)
         print("Distributed process initialized successfully.")
@@ -245,10 +290,26 @@ def main(args, ds_init):
     dataset_train = None
     if not args.eval:
         dataset_train, args.nb_classes = build_frame_dataset(is_train=True, test_mode=False, args=args)
-        sampler_train = torch.utils.data.DistributedSampler(
-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True, drop_last=False
-        )
+
+        # sampler_train = torch.utils.data.DistributedSampler(
+        #     dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True, drop_last=False
+        # )
+        # print("Sampler_train = %s" % str(sampler_train))
+
+        total_batch_size = args.batch_size * args.update_freq * utils.get_world_size()
+        if args.nb_samples_per_epoch and args.nb_samples_per_epoch < len(dataset_train):
+            sampler_train = utils.ShortDistributedSampler(
+                dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True,
+                num_samples_per_epoch=args.nb_samples_per_epoch
+            )
+            num_training_steps_per_epoch = sampler_train.total_size // total_batch_size
+        else:
+            sampler_train = torch.utils.data.DistributedSampler(
+                dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True,
+            )
+            num_training_steps_per_epoch = len(dataset_train) // total_batch_size
         print("Sampler_train = %s" % str(sampler_train))
+
     if args.disable_eval_during_finetuning:
         dataset_val = None
     else:
@@ -270,10 +331,14 @@ def main(args, ds_init):
     else:
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
 
-    if global_rank == 0 and args.log_dir is not None:
+    if global_rank == 0 and args.log_dir is not None and not args.eval:
         os.makedirs(args.log_dir, exist_ok=True)
         log_writer = utils.TensorboardLogger(log_dir=args.log_dir)
     else:
+        log_writer = None
+
+    # !!!
+    if args.eval:
         log_writer = None
 
     if args.num_sample > 1:
@@ -407,12 +472,24 @@ def main(args, ds_init):
     # # Freeze specific layers
     if args.freeze_layers is not None:
         if args.freeze_layers.startswith("first N blocks"):
-            n_blocks = int(args.freeze_layers.split(";")[-1])
+            n_blocks = int(args.freeze_layers.split(";")[1])
+            print(f"\nFreezing first N blocks: {n_blocks}")
             # Freeze first N blocks
             for name, param in model.named_parameters():
-                if "blocks" in name and int(name.split(".")[1]) < n_blocks:
+                if "blocks" in name:
+                    layer_index = int(name.split(".")[1])
+                    if layer_index < n_blocks:
+                        # Skip freezing if it's a normalization or projection layer
+                        if "norm" in name:
+                            param.requires_grad = True
+                        else:
+                            param.requires_grad = False
+                    else:
+                        param.requires_grad = True
+                elif "patch_embed" in name: 
                     param.requires_grad = False
                 else:
+                    # Keep other parameters outside "blocks" trainable
                     param.requires_grad = True
 
     model_ema = None
@@ -431,8 +508,8 @@ def main(args, ds_init):
     print('number of params:', n_parameters)
 
     if not args.eval:
-        total_batch_size = args.batch_size * args.update_freq * utils.get_world_size()
-        num_training_steps_per_epoch = len(dataset_train) // total_batch_size
+        #total_batch_size = args.batch_size * args.update_freq * utils.get_world_size()
+        # num_training_steps_per_epoch = len(dataset_train) // total_batch_size  # defined way above
         args.lr = args.lr * total_batch_size / 256
         args.min_lr = args.min_lr * total_batch_size / 256
         args.warmup_lr = args.warmup_lr * total_batch_size / 256
@@ -526,19 +603,22 @@ def main(args, ds_init):
         optimizer=optimizer, loss_scaler=loss_scaler, model_ema=model_ema)
 
     if args.eval:
-        preds_file = os.path.join(args.output_dir, f'predictions_{global_rank}.csv')
+        os.makedirs(args.output_dir, exist_ok=True)
+        preds_file = os.path.join(args.output_dir, f'predictions.csv')
+        stats_file = os.path.join(args.output_dir, f'stats.txt')
         assert not os.path.exists(preds_file), "File already exists!"
-        test_stats = final_test(data_loader_test, model, device, preds_file,
+        assert not os.path.exists(stats_file), "File already exists!"
+        test_stats = final_test(data_loader_test, model, device, preds_file, stats_file,
                                 plot_dir=os.path.join(args.output_dir, "plots"))
         torch.distributed.barrier()
-        #if global_rank == 0:
-            #print("Start merging results...")
-            # final_top1 = merge(args.output_dir, num_tasks)
-            # print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%")
-            # log_stats = {'Final top-1': final_top1}
-            # if args.output_dir and utils.is_main_process():
-            #     with open(os.path.join(args.output_dir, "results.txt"), mode="a", encoding="utf-8") as f:
-            #         f.write(json.dumps(log_stats) + "\n")
+        # if global_rank == 0:
+        #     print("Start merging results...")
+        #     final_top1 = merge(args.output_dir, num_tasks)
+        #     print(f"Accuracy of the network on the {len(dataset_test)} test videos: Top-1: {final_top1:.2f}%")
+        #     log_stats = {'Final top-1': final_top1}
+        #     if args.output_dir and utils.is_main_process():
+        #         with open(os.path.join(args.output_dir, "results.txt"), mode="a", encoding="utf-8") as f:
+        #             f.write(json.dumps(log_stats) + "\n")
         exit(0)
 
     with open(os.path.join(args.output_dir, "params.json"), mode="w") as f:
@@ -591,7 +671,7 @@ def main(args, ds_init):
         # save last model with all the parameters so we can continue from it
         utils.save_model(
                     args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                    loss_scaler=loss_scaler, epoch="last", model_ema=model_ema
+                    loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema, epoch_name="last"
                     )
         if args.output_dir and args.save_ckpt:
             if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:

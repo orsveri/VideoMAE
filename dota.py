@@ -25,7 +25,7 @@ class FrameClsDataset_DoTA(Dataset):
 
     def __init__(self, anno_path, data_path, mode='train',
                  view_len=8, target_fps=10, orig_fps=10, view_step=10,
-                 crop_size=224, short_side_size=256,
+                 crop_size=224, short_side_size=320,
                  new_height=256, new_width=340, keep_aspect_ratio=True,
                  num_segment=1, num_crop=1, test_num_segment=1, test_num_crop=1, args=None):
         self.anno_path = anno_path
@@ -280,7 +280,7 @@ class FrameClsDataset_DoTA(Dataset):
                 if final_resize:
                     img = cv2.resize(img, dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
                 elif resize_scale is not None:
-                    short_side = min(img.shape[:2])
+                    short_side = min(min(img.shape[:2]), self.short_side_size)
                     target_side = self.crop_size * resize_scale
                     k = target_side / short_side
                     img = cv2.resize(img, dsize=(0,0), fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
@@ -771,12 +771,28 @@ class MockArgs:
 
 
 if __name__ == "__main__":
-    from datasets_frame import DataAugmentationForVideoMAE, DataAugmentationForVideoMAE_NoCrop
+    from datasets_frame import DataAugmentationForVideoMAE, DataAugmentationForVideoMAE_LightCrop
     args = MockArgs()
-    tf = DataAugmentationForVideoMAE_NoCrop(args)
+    tf = DataAugmentationForVideoMAE_LightCrop(args)
 
-    dataset = VideoMAE_DoTA(
-        anno_path='all_split.txt',
+    # dataset = VideoMAE_DoTA(
+    #     anno_path='half_train_split.txt',
+    #     data_path="/gpfs/work3/0/tese0625/RiskNetData/DoTA_refined",
+    #     video_ext='mp4',
+    #     is_color=True,
+    #     view_len=16,
+    #     view_step=1,
+    #     orig_fps=10,
+    #     target_fps=10,
+    #     transform=tf,
+    #     temporal_jitter=False,
+    #     video_loader=True,
+    #     use_decord=True,
+    #     lazy_init=False,
+    #     args=args,
+    # )
+    dataset = FrameClsDataset_DoTA(
+        anno_path='amnet_train_split300.txt',
         data_path="/gpfs/work3/0/tese0625/RiskNetData/DoTA_refined",
         video_ext='mp4',
         is_color=True,
@@ -804,6 +820,7 @@ if __name__ == "__main__":
 
     item = dataset[0]
     #print("\nitem 0: \n", item)
+    exit(0)
 
     if False:
         from data_tools.vis_utils import create_image_matrix

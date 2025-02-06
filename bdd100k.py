@@ -26,9 +26,9 @@ ignore_videos = ("val/c4742900-81aa45ae.mov",)
 class VideoMAE_BDD100K(VideoMAE):
 
     def __init__(self, fps=30, target_fps=10, **kwargs):
-        super().__init__(**kwargs)
         self.fps = fps
         self.tfps = target_fps
+        super().__init__(**kwargs)
         self.sequencer = RegularSequencerWithStart(seq_frequency=self.tfps, seq_length=self.new_length, step=self.new_step)
         self._prepare_views()
         if self.args.transforms_finetune_align:
@@ -91,7 +91,9 @@ class VideoMAE_BDD100K(VideoMAE):
         args,
     ):
         h, w, _ = buffer[0].shape
-        do_pad = video_transforms.pad_wide_clips(h, w, args.input_size)
+        # first, resize to a bit larger size (e.g. 320) instead of the target one (224)
+        min_side = min(h, w, self.intermediate_size)
+        do_pad = video_transforms.pad_wide_clips(h, w, min_side)
         buffer = [do_pad(img) for img in buffer]
         if torch.rand(1).item() > 0.3:
             aug_transform = video_transforms.create_random_augment(
@@ -191,6 +193,7 @@ class MockArgs:
         self.mask_type = 'tube'  # Masking type, 'tube' in this case
         self.window_size = (8, 14, 14)  # Example window size for TubeMaskingGenerator
         self.mask_ratio = 0.90  # Example mask ratio
+        self.transforms_finetune_align = True
 
 
 class CustomDataLoader(DataLoader):

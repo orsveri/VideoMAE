@@ -413,9 +413,9 @@ def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epoch
     return schedule
 
 
-def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, model_ema=None):
+def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, model_ema=None, epoch_name=None):
     output_dir = Path(args.output_dir)
-    epoch_name = str(epoch)
+    epoch_name = str(epoch) if epoch_name is None else epoch_name
     if loss_scaler is not None:
         checkpoint_paths = [output_dir / ('checkpoint-%s.pth' % epoch_name)]
         for checkpoint_path in checkpoint_paths:
@@ -495,7 +495,11 @@ def auto_load_model(args, model, model_without_ddp, optimizer, loss_scaler, mode
                 args.resume = os.path.join(output_dir, 'checkpoint-%d' % latest_ckpt)
                 print("Auto resume checkpoint: %d" % latest_ckpt)
                 _, client_states = model.load_checkpoint(args.output_dir, tag='checkpoint-%d' % latest_ckpt)
-                args.start_epoch = client_states['epoch'] + 1
+                print(f"client_states['epoch']={client_states['epoch']}")
+                try:
+                    args.start_epoch = client_states['epoch'] + 1
+                except TypeError:
+                    args.start_epoch = latest_ckpt + 1
                 if model_ema is not None:
                     if args.model_ema:
                         _load_checkpoint_for_ema(model_ema, client_states['model_ema'])
@@ -776,7 +780,7 @@ def collect_grad_norms(model, num_layers=12, num_heads=6):
     qkv_grad_norms = np.zeros((num_layers, num_heads, 5))  # [Q weight, K weight, V weight, Q bias, V bias]
 
     # For projection weights and biases
-    proj_grad_norms = np.zeros((num_layers, 2))  # [Projection weight, Projection bias]
+    proj_grad_norms = np.zeros((num_layers, 6))  # [Projection weight, Projection bias, mlp fc1 w, b, mlp fc2 w, b]
 
     # For patch embedding projection weights and biases
     patch_embed_grad_norms = np.zeros(2)  # [Patch embed weight, Patch embed bias]
@@ -797,6 +801,11 @@ def collect_grad_norms(model, num_layers=12, num_heads=6):
             for head_idx in range(num_heads):
                 for qkv_idx in range(3):  # 0: Q, 1: K, 2: V
                     qkv_grad_norms[layer_idx, head_idx, qkv_idx] = qkv_grad[qkv_idx, head_idx].norm().item()
+        else:
+            print("qkv_weight.grad is None")
+            print(qkv_weight.shape)
+            print(qkv_weight.grad)
+            exit(0)
 
         # Handle Q bias gradients
         q_bias = getattr(block.attn, 'q_bias', None)
@@ -821,6 +830,26 @@ def collect_grad_norms(model, num_layers=12, num_heads=6):
         proj_bias = block.attn.proj.bias
         if proj_bias.grad is not None:
             proj_grad_norms[layer_idx, 1] = proj_bias.grad.norm().item()
+
+        # Handle mlp fc1 weights
+        proj_weight = block.mlp.fc1.weight
+        if proj_weight.grad is not None:
+            proj_grad_norms[layer_idx, 2] = proj_weight.grad.norm().item()
+
+        # Handle mlp fc 1 bias
+        proj_bias = block.mlp.fc1.bias
+        if proj_bias.grad is not None:
+            proj_grad_norms[layer_idx, 3] = proj_bias.grad.norm().item()
+
+        # Handle mlp fc2 weights
+        proj_weight = block.mlp.fc2.weight
+        if proj_weight.grad is not None:
+            proj_grad_norms[layer_idx, 4] = proj_weight.grad.norm().item()
+
+        # Handle mlp fc2 bias
+        proj_bias = block.mlp.fc2.bias
+        if proj_bias.grad is not None:
+            proj_grad_norms[layer_idx, 5] = proj_bias.grad.norm().item()
 
     return np.nan_to_num(qkv_grad_norms), np.nan_to_num(proj_grad_norms), np.nan_to_num(patch_embed_grad_norms)
 
@@ -852,7 +881,7 @@ def collect_grad_norms_pretrain(model, num_layers=12, num_heads=6):
     qkv_grad_norms = np.zeros((num_layers, num_heads, 5))  # [Q weight, K weight, V weight, Q bias, V bias]
 
     # For projection weights and biases
-    proj_grad_norms = np.zeros((num_layers, 2))  # [Projection weight, Projection bias]
+    proj_grad_norms = np.zeros((num_layers, 6))  # [Projection weight, Projection bias]
 
     # For patch embedding projection weights and biases
     patch_embed_grad_norms = np.zeros(2)  # [Patch embed weight, Patch embed bias]
@@ -897,6 +926,26 @@ def collect_grad_norms_pretrain(model, num_layers=12, num_heads=6):
         proj_bias = block.attn.proj.bias
         if proj_bias.grad is not None:
             proj_grad_norms[layer_idx, 1] = proj_bias.grad.norm().item()
+
+        # Handle mlp fc1 weights
+        proj_weight = block.mlp.fc1.weight
+        if proj_weight.grad is not None:
+            proj_grad_norms[layer_idx, 2] = proj_weight.grad.norm().item()
+
+        # Handle mlp fc 1 bias
+        proj_bias = block.mlp.fc1.bias
+        if proj_bias.grad is not None:
+            proj_grad_norms[layer_idx, 3] = proj_bias.grad.norm().item()
+
+        # Handle mlp fc2 weights
+        proj_weight = block.mlp.fc2.weight
+        if proj_weight.grad is not None:
+            proj_grad_norms[layer_idx, 4] = proj_weight.grad.norm().item()
+
+        # Handle mlp fc2 bias
+        proj_bias = block.mlp.fc2.bias
+        if proj_bias.grad is not None:
+            proj_grad_norms[layer_idx, 5] = proj_bias.grad.norm().item()
 
     return np.nan_to_num(qkv_grad_norms), np.nan_to_num(proj_grad_norms), np.nan_to_num(patch_embed_grad_norms)
 

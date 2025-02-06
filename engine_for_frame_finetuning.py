@@ -71,7 +71,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
     # save grad norms
     qkv_grad_norms = np.zeros(shape=(12, 6, 5), dtype=np.float64)
-    proj_grad_norms = np.zeros(shape=(12, 2), dtype=np.float64)
+    proj_grad_norms = np.zeros(shape=(12, 6), dtype=np.float64)
     patch_embed_grad_norms = np.zeros(shape=(2,), dtype=np.float64)
 
     for data_iter_step, (samples, targets, _, extra_info) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
@@ -344,7 +344,7 @@ def validation_one_epoch(data_loader, model, device, with_ttc=False, smoothed_la
 
 
 @torch.no_grad()
-def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False, smoothed_labels_for_loss=False):
+def final_test(data_loader, model, device, preds_file, stats_file, plot_dir=None, with_ttc=False, smoothed_labels_for_loss=False):
     criterion = torch.nn.CrossEntropyLoss()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
@@ -452,11 +452,16 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False, 
         task="binary",
         thresholds=THRESHOLDS
     )
-    print("\n===================================")
-    print(f"mAP: {ap}, auroc: {auroc}, acc: {metr_acc}")
-    print(f"P@0.5: {precision}, R@0.5: {recall}, F1@0.5: {f1}")
-    print(f"Confmat: \n\t{confmat[0][0]} | {confmat[0][1]} \n\t{confmat[1][0]} | {confmat[1][1]}")
-    print(f"----------------------------")
+    lines = ["\n===================================",
+             f"mAP: {ap}, auroc: {auroc}, acc: {metr_acc}",
+             f"P@0.5: {precision}, R@0.5: {recall}, F1@0.5: {f1}",
+             f"Confmat: \n\t{confmat[0][0]} | {confmat[0][1]} \n\t{confmat[1][0]} | {confmat[1][1]}",
+             f"----------------------------"]
+    with open(stats_file, "w") as f:
+        for l in lines:
+            f.write(l + "\n")
+            print(l)
+    
     if plot_dir is not None:
         os.makedirs(plot_dir, exist_ok=True)
         pr_precision, pr_recall, pr_thresholds = [item.detach().tolist() for item in pr_curve]
@@ -492,7 +497,7 @@ def final_test(data_loader, model, device, file, plot_dir=None, with_ttc=False, 
         "label": all_labels,
         "ttc": all_ttcs
     })
-    df.to_csv(file, index=True, header=True)
+    df.to_csv(preds_file, index=True, header=True)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print('* Acc@1 {top1.global_avg:.3f} loss {losses.global_avg:.3f}'

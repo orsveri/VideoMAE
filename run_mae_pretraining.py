@@ -94,7 +94,7 @@ def get_args():
                         help='dataset path')
     parser.add_argument('--view_fps', type=int, default=10)
     parser.add_argument('--data_set', default='Kinetics-400',
-                        choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51', 'DoTA', 'DADA2K', 'BDD100K', 'image_folder'],
+                        choices=['Kinetics-400', 'SSV2', 'UCF101', 'HMDB51', 'DoTA', 'DADA2K', 'BDD100K', 'CAP-DATA', 'image_folder'],
                         type=str, help='dataset')
     parser.add_argument('--imagenet_default_mean_and_std', default=True, action='store_true')
     parser.add_argument('--num_frames', type=int, default= 16)
@@ -336,9 +336,16 @@ def main(args):
             log_writer.update(epoch=epoch, head="my_train", step=epoch * num_training_steps_per_epoch)
         if args.output_dir:
             if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
-                utils.save_model(
-                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                    loss_scaler=loss_scaler, epoch=epoch)
+                # utils.save_model(
+                #     args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                #     loss_scaler=loss_scaler, epoch=epoch)
+                utils.save_model_weights_only(
+                    args=args, epoch=epoch, model_without_ddp=model_without_ddp)
+            # save last model with all the parameters so we can continue from it
+            utils.save_model(
+                args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                loss_scaler=loss_scaler, epoch=epoch, epoch_name="last"
+                )
 
         log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                      'epoch': epoch, 'n_parameters': n_parameters}

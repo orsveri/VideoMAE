@@ -2,10 +2,10 @@
 
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --partition=thin
+#SBATCH --partition=staging
 #SBATCH --cpus-per-task=16
-#SBATCH --time=07:00:00
-#SBATCH --output=jobs/job_outputs/pk700_clean_decord_afterclean_%j.out
+#SBATCH --time=01:00:00
+#SBATCH --output=jobs/job_outputs/analysis_%j.out
 
 module load 2023
 module load Anaconda3/2023.07-2
@@ -24,6 +24,13 @@ unset __conda_setup
 
 conda activate /home/sorlova/anaconda3/envs/video
 
+export PYTHONPATH=$PYTHONPATH:/home/sorlova/repos/AITHENA/NewStage/VideoMAE
 cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 
-python kinetics.py
+#python kinetics.py
+#python bdd100k.py
+#python dota.py
+python anaysis/read_grad_norm.py
+#python data_tools/bdd100k/prepare_anno.py
+#python shift.py
+#python data_tools/dada/halfsplit.py

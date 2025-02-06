@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import pandas as pd
 import json
+import pickle
 from tqdm import tqdm
 from PIL import Image
 from torchvision import transforms
@@ -17,6 +18,7 @@ from torch.utils.data import Dataset
 import video_transforms as video_transforms 
 import volume_transforms as volume_transforms
 
+from bdd100k import VideoMAE_BDD100K
 from dataset.sequencing import RegularSequencer, UnsafeOverlapSequencer, RegularSequencerWithStart
 from dataset.data_utils import smooth_labels, compute_time_vector
 
@@ -27,7 +29,7 @@ class FrameClsDataset_DADA(Dataset):
 
     def __init__(self, anno_path, data_path, mode='train',
                  view_len=8, target_fps=10, orig_fps=30, view_step=10,
-                 crop_size=224, short_side_size=256,
+                 crop_size=224, short_side_size=320, video_ext=".png",
                  new_height=256, new_width=340, keep_aspect_ratio=True,
                  num_segment=1, num_crop=1, test_num_segment=1, test_num_crop=1, args=None):
         self.anno_path = anno_path
@@ -38,6 +40,8 @@ class FrameClsDataset_DADA(Dataset):
         self.orig_fps = orig_fps
         self.view_step = view_step
         self.crop_size = crop_size
+        self.short_side_size = short_side_size
+        self.video_ext = video_ext
         self.keep_aspect_ratio = keep_aspect_ratio
         self.num_segment = num_segment
         self.test_num_segment = test_num_segment
@@ -106,7 +110,7 @@ class FrameClsDataset_DADA(Dataset):
 
         df = pd.read_csv(os.path.join(self.data_path, "annotation", "full_anno.csv"))
 
-        for clip in clip_names:
+        for clip in tqdm(clip_names, "Part 1/2. Reading and checking clips"):
             clip_type, clip_subfolder = clip.split("/")
             row = df[(df["video"] == int(clip_subfolder)) & (df["type"] == int(clip_type))]
             info = f"clip: {clip}, type: {clip_type}, subfolder: {clip_subfolder}, rows found: {row}"
@@ -116,7 +120,7 @@ class FrameClsDataset_DADA(Dataset):
                 errors.append(info)
             row = row.iloc[0]
             with zipfile.ZipFile(os.path.join(self.data_path, "frames", clip, "images.zip"), 'r') as zipf:
-                framenames = natsorted([f for f in zipf.namelist() if os.path.splitext(f)[1]==".png"])
+                framenames = natsorted([f for f in zipf.namelist() if os.path.splitext(f)[1]==self.video_ext])
             timesteps = natsorted([int(os.path.splitext(f)[0].split("_")[-1]) for f in framenames])
             if_acc_video = int(row["whether an accident occurred (1/0)"])
             st = int(row["abnormal start frame"])
@@ -164,7 +168,7 @@ class FrameClsDataset_DADA(Dataset):
         smoothed_label_array = []
         sequencer = RegularSequencer(seq_frequency=self.target_fps, seq_length=self.view_len, step=self.view_step)
         N = len(self.clip_names)
-        for i in range(N):
+        for i in tqdm(range(N), desc="Part 2/2. Preparing views"):
             timesteps = self.clip_timesteps[i]
             sequences = sequencer.get_sequences(timesteps_nb=len(timesteps), input_frequency=self.orig_fps)
             if sequences is None:
@@ -291,7 +295,7 @@ class FrameClsDataset_DADA(Dataset):
         clip_name = self.clip_names[clip_id]
         subclip = clip_name.split("/")[1]
         timesteps = [self.clip_timesteps[clip_id][idx] for idx in frame_seq]
-        filenames = [f"{subclip}_frame_{ts}.jpg" for ts in timesteps]
+        filenames = [f"{subclip}_frame_{ts}{self.video_ext}" for ts in timesteps]
         view = []
         for fname in filenames:
             img = cv2.imread(os.path.join(self.data_path, "frames", clip_name, fname))
@@ -301,7 +305,7 @@ class FrameClsDataset_DADA(Dataset):
             if final_resize:
                 img = cv2.resize(img, dsize=(self.crop_size, self.crop_size), interpolation=cv2.INTER_CUBIC)
             elif resize_scale is not None:
-                short_side = min(img.shape[:2])
+                short_side = min(min(img.shape[:2]), self.short_side_size)
                 target_side = self.crop_size * resize_scale
                 k = target_side / short_side
                 img = cv2.resize(img, dsize=(0,0), fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
@@ -312,11 +316,11 @@ class FrameClsDataset_DADA(Dataset):
         #view = np.stack(view, axis=0)
         return view, clip_name, filenames[-1]
 
-    def load_images_zip(self, dataset_sample, final_resize=False, resize_scale=None, img_ext=".png"):
+    def load_images_zip(self, dataset_sample, final_resize=False, resize_scale=None):
         clip_id, frame_seq = dataset_sample
         clip_name = self.clip_names[clip_id]
         timesteps = [self.clip_timesteps[clip_id][idx] for idx in frame_seq]
-        filenames = [f"{str(ts).zfill(4)}{img_ext}" for ts in timesteps]
+        filenames = [f"{str(ts).zfill(4)}{self.video_ext}" for ts in timesteps]
         view = []
         with zipfile.ZipFile(os.path.join(self.data_path, "frames", clip_name, "images.zip"), 'r') as zipf:
             for fname in filenames:
@@ -441,7 +445,7 @@ def tensor_normalize(tensor, mean, std):
     return tensor
 
 
-class VideoMAE_DADA2K(torch.utils.data.Dataset):
+class VideoMAE_DADA2K(VideoMAE_BDD100K):
     """Load your own video classification dataset.
     Parameters
     ----------
@@ -490,147 +494,53 @@ class VideoMAE_DADA2K(torch.utils.data.Dataset):
     """
     ego_categories = [str(cat) for cat in list(range(1, 19)) + [61, 62]]
 
-    def __init__(self,
-                 anno_path,
-                 data_path,
-                 train=True,
-                 test_mode=False,
-                 video_ext='mp4',
-                 is_color=True,
-                 view_len=1,
-                 view_step=1,
-                 orig_fps=10,
-                 target_fps=10,
-                 transform=None,
-                 temporal_jitter=False,
-                 video_loader=False,
-                 use_decord=False,
-                 lazy_init=False,
-                 short_size=320,
-                 args=None
-                 ):
+    def __init__(self, **kwargs):
+        super(VideoMAE_DADA2K, self).__init__(**kwargs)
 
-        super(VideoMAE_DADA2K, self).__init__()
-        self.anno_path = anno_path
-        self.data_path = data_path
-        self.train = train
-        self.test_mode = test_mode
-        self.is_color = is_color
-        self.view_len = view_len
-        self.view_step = view_step
-        self.ofps = orig_fps
-        self.tfps = target_fps
-        self.temporal_jitter = temporal_jitter
-        self.video_loader = video_loader
-        self.video_ext = video_ext
-        self.use_decord = use_decord
-        self.transform = transform
-        self.lazy_init = lazy_init
-        self.short_size = short_size
-        self.ttc_TT = args.ttc_TT if hasattr(args, "ttc_TT") else 2.
-        self.ttc_TA = args.ttc_TA if hasattr(args, "ttc_TA") else 1.
-        self.sequencer = RegularSequencerWithStart(seq_frequency=self.tfps, seq_length=self.view_len, step=self.view_step)
-
-        if not self.lazy_init:
-            self._read_anno()
-            self._prepare_views()
-            if len(self.dataset_samples) == 0:
-                raise RuntimeError("Found 0 video clips in subfolders of: " + data_path)
-
-    def _read_anno(self):
+    def _make_dataset_snellius(self, directory, setting):
         clip_timesteps = []
-        clip_binary_labels = []
-        clip_cat_labels = []
-        clip_ego = []
-        clip_toa = []
-        clip_ttc = []
-        clip_smoothed_labels = []
-
-        errors = []
-
-        with open(os.path.join(self.data_path, self.anno_path), 'r') as file:
+        with open(os.path.join(self.root, self.setting), 'r') as file:
             clip_names = [line.rstrip() for line in file]
-
-        df = pd.read_csv(os.path.join(self.data_path, "annotation", "full_anno.csv"))
-
+        df = pd.read_csv(os.path.join(self.root, "annotation", "full_anno.csv"))
         for clip in clip_names:
             clip_type, clip_subfolder = clip.split("/")
             row = df[(df["video"] == int(clip_subfolder)) & (df["type"] == int(clip_type))]
             info = f"clip: {clip}, type: {clip_type}, subfolder: {clip_subfolder}, rows found: {row}"
             description_csv = row["texts"]
             assert len(row) == 1, f"Multiple results! \n{info}"
-            if len(row) != 1:
-                errors.append(info)
             row = row.iloc[0]
-            with zipfile.ZipFile(os.path.join(self.data_path, "frames", clip, "images.zip"), 'r') as zipf:
-                framenames = natsorted([f for f in zipf.namelist() if os.path.splitext(f)[1]==".png"])
-            timesteps = natsorted([int(os.path.splitext(f)[0].split("_")[-1]) for f in framenames])
-            if_acc_video = int(row["whether an accident occurred (1/0)"])
-            if if_acc_video:
-                st = int(row["abnormal start frame"])
-                en = int(row["abnormal end frame"])
-                binary_labels = [1 if st <= t <= en else 0 for t in timesteps]
-            else:
-                binary_labels = [0 for t in timesteps]
-            cat_labels = [l*clip_type for l in binary_labels]
-            if_ego = clip_type in self.ego_categories
-            toa = row["accident frame"]
-            ttc = compute_time_vector(binary_labels, fps=self.ofps, TT=self.ttc_TT, TA=self.ttc_TA)
-            smoothed_labels = smooth_labels(labels=torch.Tensor(binary_labels), time_vector=ttc,
-                                            before_limit=self.ttc_TT, after_limit=self.ttc_TA)
-
+            with zipfile.ZipFile(os.path.join(self.root, "frames", clip, "images.zip"), 'r') as zipf:
+                framenames = natsorted([f for f in zipf.namelist() if os.path.splitext(f)[1]==self.video_ext])
+            try:
+                timesteps = natsorted([int(os.path.splitext(f)[0].split("_")[-1]) for f in framenames])
+            except ValueError:
+                print(f"ERR: {clip}")
+                continue
             clip_timesteps.append(timesteps)
-            clip_binary_labels.append(binary_labels)
-            clip_cat_labels.append(cat_labels)
-            clip_ego.append(if_ego)
-            clip_toa.append(toa)
-            clip_ttc.append(ttc)
-            clip_smoothed_labels.append(smoothed_labels)
 
-        for line in errors:
-            print(line)
-        if len(errors) > 0:
-            print(f"\n====\nerrors: {len(errors)}. You can add saving the error list in the code.")
-            exit(0)
-
-        assert len(clip_names) == len(clip_timesteps) == len(clip_binary_labels) == len(clip_cat_labels)
-        self.clip_names = clip_names
+        assert len(clip_names) == len(clip_timesteps)
+        #self.clips = clip_names
         self.clip_timesteps = clip_timesteps
-        self.clip_bin_labels = clip_binary_labels
-        self.clip_cat_labels = clip_cat_labels
-        self.clip_ego = clip_ego
-        self.clip_toa = clip_toa
-        self.clip_ttc = clip_ttc
-        self.clip_smoothed_labels = clip_smoothed_labels
+        return clip_names
 
     def _prepare_views(self):
         dataset_sequences = []
-        label_array = []
-        ttc = []
-        smoothed_label_array = []
-        sequencer = RegularSequencer(seq_frequency=self.tfps, seq_length=self.view_len, step=self.view_step)
-        N = len(self.clip_names)
-        for i in tqdm(range(N)):
+        N = len(self.clips)
+        for i in tqdm(range(N), desc="Preparing views"):
             timesteps = self.clip_timesteps[i]
-            sequences = sequencer.get_sequences(timesteps_nb=len(timesteps), input_frequency=self.ofps)
+            sequences = self.sequencer.get_sequences(timesteps_nb=len(timesteps), input_frequency=self.fps)
             if sequences is None:
                 continue
             dataset_sequences.extend([(i, seq) for seq in sequences])
-            label_array.extend([self.clip_bin_labels[i][seq[-1]] for seq in sequences])
-            smoothed_label_array.extend([self.clip_smoothed_labels[i][seq[-1]] for seq in sequences])
-            ttc.extend([self.clip_ttc[i][seq[-1]] for seq in sequences])
         self.dataset_samples = dataset_sequences
-        self._label_array = label_array
-        self.ttc = ttc
-        self._smoothed_label_array = smoothed_label_array
     
-    def load_images(self, dataset_sample, short_size=320, img_ext=".png"):
+    def load_images(self, dataset_sample):
         clip_id, frame_seq = dataset_sample
-        clip_name = self.clip_names[clip_id]
+        clip_name = self.clips[clip_id]
         timesteps = [self.clip_timesteps[clip_id][idx] for idx in frame_seq]
-        filenames = [f"{str(ts).zfill(4)}{img_ext}" for ts in timesteps]
+        filenames = [f"{str(ts).zfill(6)}{self.video_ext}" for ts in timesteps]
         view = []
-        with zipfile.ZipFile(os.path.join(self.data_path, "frames", clip_name, "images.zip"), 'r') as zipf:
+        with zipfile.ZipFile(os.path.join(self.root, "frames", clip_name, "images.zip"), 'r') as zipf:
             for fname in filenames:
                 with zipf.open(fname) as file:
                     file_bytes = np.frombuffer(file.read(), np.uint8)
@@ -639,8 +549,9 @@ class VideoMAE_DADA2K(torch.utils.data.Dataset):
                     print("Image doesn't exist! ", fname)
                     exit(1)
                 # resze
-                if short_size is not None:
+                if self.intermediate_size is not None:
                     h, w, _ = img.shape
+                    short_size = min([h, w, self.intermediate_size])
                     if h < w:
                         scale = short_size / h
                         new_h, new_w = short_size, int(w * scale)
@@ -654,64 +565,121 @@ class VideoMAE_DADA2K(torch.utils.data.Dataset):
         #view = np.stack(view, axis=0)
         return view, clip_name, filenames[-1]
     
-    def _aug_frame(
-        self,
-        buffer,
-        args,
-    ):
-        if torch.rand(1).item() > 0.3:
-            h, w, _ = buffer[0].shape
-            # Perform data augmentation - padding
-            do_pad = video_transforms.pad_wide_clips(h, w, args.input_size)
-            buffer = [do_pad(img) for img in buffer]
+    def load_images_cv2(self, dataset_sample):
+        clip_id, frame_seq = dataset_sample
+        clip_name = self.clips[clip_id]
+        timesteps = [self.clip_timesteps[clip_id][idx] for idx in frame_seq]
+        filenames = [f"{str(ts).zfill(6)}{self.video_ext}" for ts in timesteps]
+        view = []
+        with zipfile.ZipFile(os.path.join(self.root, "frames", clip_name, "images.zip"), 'r') as zipf:
+            for fname in filenames:
+                with zipf.open(fname) as file:
+                    file_bytes = np.frombuffer(file.read(), np.uint8)
+                    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                if img is None:
+                    print("Image doesn't exist! ", fname)
+                    exit(1)
+                # resze
+                if self.intermediate_size is not None:
+                    h, w, _ = img.shape
+                    short_size = min([h, w, self.intermediate_size])
+                    if h < w:
+                        scale = short_size / h
+                        new_h, new_w = short_size, int(w * scale)
+                    else:
+                        scale = short_size / w
+                        new_h, new_w = int(h * scale), short_size
+                    img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+                view.append(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+        #view = np.stack(view, axis=0)
+        return view, clip_name, filenames[-1]
+    
+    # def _aug_frame(
+    #     self,
+    #     buffer,
+    #     args,
+    # ):
+    #     if torch.rand(1).item() > 0.3:
+    #         h, w, _ = buffer[0].shape
+    #         # Perform data augmentation - padding
+    #         do_pad = video_transforms.pad_wide_clips(h, w, args.input_size)
+    #         buffer = [do_pad(img) for img in buffer]
 
-            aug_transform = video_transforms.create_random_augment(
-                input_size=(args.input_size, args.input_size),
-                auto_augment=args.aa,
-                interpolation=args.train_interpolation,
-                do_transforms=video_transforms.DRIVE_TRANSFORMS
-            )
+    #         aug_transform = video_transforms.create_random_augment(
+    #             input_size=(args.input_size, args.input_size),
+    #             auto_augment=args.aa,
+    #             interpolation=args.train_interpolation,
+    #             do_transforms=video_transforms.DRIVE_TRANSFORMS
+    #         )
 
-            buffer = [transforms.ToPILImage()(frame) for frame in buffer]
-            buffer = aug_transform(buffer)
+    #         buffer = [transforms.ToPILImage()(frame) for frame in buffer]
+    #         buffer = aug_transform(buffer)
 
-        return buffer
+    #     return buffer
     
     def _getitem_finetune_align(self, index):
         sample = self.dataset_samples[index]
         if self.video_loader:
-            buffer, _, __ = self.load_images_cv2(sample, short_size=self.short_size)  # T H W C
+            buffer, _, __ = self.load_images_cv2(sample)  # T H W C
             if len(buffer) == 0:
                 while len(buffer) == 0:
                     warnings.warn("video {} not correctly loaded during training".format(sample))
                     index = np.random.randint(self.__len__())
                     sample = self.dataset_samples[index]
-                    buffer, _, __ = self.load_images_cv2(sample, short_size=self.short_size)
+                    buffer, _, __ = self.load_images_cv2(sample)
 
-        buffer = self._aug_frame(buffer, args)
+        buffer = self._aug_frame(buffer, self.args)
         process_data, mask = self.transform((buffer, None))  # T*C,H,W
         # T*C,H,W -> T,C,H,W -> C,T,H,W
-        process_data = process_data.view((self.view_len, 3) + process_data.size()[-2:]).transpose(0, 1)
+        process_data = process_data.view((self.new_length, 3) + process_data.size()[-2:]).transpose(0, 1)
         return (process_data, mask)
 
     def _getitem_orig(self, index):
         sample = self.dataset_samples[index]
         if self.video_loader:
-            buffer, _, __ = self.load_images(sample, short_size=self.short_size)  # T H W C
+            buffer, _, __ = self.load_images(sample)  # T H W C
             if len(buffer) == 0:
                 while len(buffer) == 0:
                     warnings.warn("video {} not correctly loaded during training".format(sample))
                     index = np.random.randint(self.__len__())
                     sample = self.dataset_samples[index]
-                    buffer, _, __ = self.load_images(sample, final_resize=False, resize_scale=1.)
+                    buffer, _, __ = self.load_images(sample)
 
         process_data, mask = self.transform((buffer, None))  # T*C,H,W
         # T*C,H,W -> T,C,H,W -> C,T,H,W
-        process_data = process_data.view((self.view_len, 3) + process_data.size()[-2:]).transpose(0, 1)
+        process_data = process_data.view((self.new_length, 3) + process_data.size()[-2:]).transpose(0, 1)
         return (process_data, mask)
 
     def __len__(self):
         return len(self.dataset_samples)
+    
+
+class VideoMAE_DADA2K_prepared(VideoMAE_DADA2K):
+
+    def __init__(self, clips_txt, timesteps_pkl, views_pkl, **kwargs):
+        self.clips_txt = clips_txt
+        self.timesteps_pkl = timesteps_pkl
+        self.views_pkl = views_pkl
+        super().__init__(**kwargs)
+
+    def _make_dataset_snellius(self, directory, setting):
+        clips = []
+        # read from the file
+        with open(self.clips_txt, 'r') as file:
+            clips = [line.rstrip() for line in file]
+        assert len(clips) > 0, f"Cannot find any video clips for the given split: {setting}"
+        with open(self.timesteps_pkl, 'rb') as file:
+            timesteps = pickle.load(file)
+            assert len(timesteps) == len(clips)
+        self.clip_timesteps = timesteps
+        return clips
+    
+    def _prepare_views(self):
+        dataset_sequences = []
+        # read from the file
+        with open(self.views_pkl, 'rb') as file:
+            dataset_sequences = pickle.load(file)
+        self.dataset_samples = dataset_sequences
 
 
 class MockArgs:
@@ -720,6 +688,11 @@ class MockArgs:
         self.mask_type = 'tube'  # Masking type, 'tube' in this case
         self.window_size = (8, 14, 14)  # Example window size for TubeMaskingGenerator
         self.mask_ratio = 0.90  # Example mask ratio
+        self.loss = "crossentropy"
+        self.transforms_finetune_align = True
+        self.reprob = 0.
+        self.aa = "rand-m3-n3-mstd0.5-inc1"
+        self.train_interpolation = "bicubic"
 
 
 if __name__ == "__main__":
@@ -727,33 +700,133 @@ if __name__ == "__main__":
     args = MockArgs()
     tf = DataAugmentationForVideoMAE(args)
 
-    dataset = VideoMAE_DADA2K(
-        anno_path="DADA2K_my_split/all.txt",
-        data_path="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/DADA2K",
-        video_ext='mp4',
+    if False:
+        dataset = FrameClsDataset_DADA(
+                anno_path="DADA2K_my_split/half_training.txt",
+                data_path="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/DADA2K",
+                mode="train",
+                view_len=16,
+                view_step=1,
+                orig_fps=30,  # original FPS of the dataset
+                target_fps=10,  # 10
+                num_segment=1,
+                test_num_segment=1,
+                test_num_crop=1,  # 1
+                num_crop=1,
+                keep_aspect_ratio=True,
+                crop_size=args.input_size,
+                args=args)
+        print(f"\nDATASET views: {len(dataset)}")
+        L = len(dataset)
+        labels = dataset._label_array
+        assert len(labels) == L, f"L={L}, labels len is {len(labels)}"
+        labels = np.array(labels)
+        unique, counts = np.unique(labels, return_counts=True)
+
+        print(f"Dataset length: {L} for view step {dataset.view_step}")
+        print("unique values and their counts:")
+        for u, c in zip(unique, counts):
+            print(f"item {u}: {c} times")
+
+        item = dataset[0]
+        #print("\nitem 0: \n", item)
+        exit(0)
+
+    if False:
+        dataset = VideoMAE_DADA2K(
+            root="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/DADA2K",
+            setting="DADA2K_my_split/all.txt",
+            video_ext='.png',
+            is_color=True,
+            new_length=16,
+            new_step=1,
+            fps=30,
+            target_fps=10,
+            transform=tf,
+            temporal_jitter=False,
+            video_loader=True,
+            use_decord=True,
+            lazy_init=False,
+            args=args
+        )
+        L = len(dataset)
+        print(f"Dataset length: {L} for view step {dataset.new_step}")
+
+        item = dataset[0]
+        #print("\nitem 0: \n", item)
+
+    if True:
+        dataset = VideoMAE_DADA2K_prepared(
+        clips_txt="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_clips.txt",
+        timesteps_pkl="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_timesteps.pkl",
+        views_pkl="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_dataset_samples.pkl",
+        root="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA",
+        setting="CAPDATA_my_split/training.txt",
+        video_ext='.jpg',
         is_color=True,
-        view_len=16,
-        view_step=1,
-        orig_fps=30,
+        new_length=16,
+        new_step=1,
+        fps=30,
         target_fps=10,
         transform=tf,
         temporal_jitter=False,
         video_loader=True,
         use_decord=True,
-        lazy_init=False
+        lazy_init=False,
+        args=args
+        )
+        L = len(dataset)
+        print(f"Dataset length: {L} for view step {dataset.new_step}")
+        exit(0)
+
+
+    print("\n=======================\nCAP-DATA\n========================")
+
+    dataset = VideoMAE_DADA2K(
+        root="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA",
+        setting="CAPDATA_my_split/training.txt",
+        video_ext='.jpg',
+        is_color=True,
+        new_length=16,
+        new_step=1,
+        fps=30,
+        target_fps=10,
+        transform=tf,
+        temporal_jitter=False,
+        video_loader=True,
+        use_decord=True,
+        lazy_init=False,
+        args=args
     )
     L = len(dataset)
-    labels = dataset._label_array
-    assert len(labels) == L, f"L={L}, labels len is {len(labels)}"
-    labels = np.array(labels)
-    unique, counts = np.unique(labels, return_counts=True)
-
-    print(f"Dataset length: {L} for view step {dataset.view_step}")
-    print("unique values and their counts:")
-    for u, c in zip(unique, counts):
-        print(f"item {u}: {c} times")
+    print(f"Dataset length: {L} for view step {dataset.new_step}")
 
     item = dataset[0]
-    print("\nitem 0: \n", item)
+    # print("\nitem 0: \n", item)
+
+    assert len(dataset.clips) == len(dataset.clip_timesteps)
+
+    print("views:")
+    print(dataset.clip_timesteps[:5])
+
+    os.makedirs("/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits", exist_ok=True)
+
+    print("Writing clips...")
+    with open("/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_clips.txt", "w") as f:
+        for c in dataset.clips:
+            f.write(c + "\n")
+    print("Done!")
+
+    print("Writing timesteps...")
+    with open("/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_timesteps.pkl", "wb") as f:
+        pickle.dump(dataset.clip_timesteps, f)
+    print("Done!")
+
+    print("Writing views...")
+
+    with open("/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_dataset_samples.pkl", "wb") as f:
+        pickle.dump(dataset.dataset_samples, f)
+
+    print("Done!")
 
     exit(0)

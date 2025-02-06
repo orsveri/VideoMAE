@@ -1,1 +1,0 @@
-srun -p gpu_h100 -t 00:10:00 --gpus-per-node=1  --pty /bin/bash

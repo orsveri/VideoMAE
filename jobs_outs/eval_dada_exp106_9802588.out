@@ -1,0 +1,699 @@
+============================================================================================== 
+Warning! Mixing Conda and module environments may lead to corruption of the
+user environment. 
+We do not recommend users mixing those two environments unless absolutely
+necessary. Note that 
+SURF does not provide any support for Conda environment.
+For more information, please refer to our software policy page:
+https://servicedesk.surf.nl/wiki/display/WIKI/Software+policy+Snellius#SoftwarepolicySnellius-UseofAnacondaandMinicondaenvironmentsonSnellius 
+
+Remember that many packages have already been installed on the system and can
+be loaded using 
+the 'module load <package__name>' command. If you are uncertain if a package is
+already available 
+on the system, please use 'module avail' or 'module spider' to search for it.
+============================================================================================== 
+/home/sorlova/anaconda3/envs/video/lib/python3.12/site-packages/flash_attn/ops/fused_dense.py:29: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @custom_fwd
+/home/sorlova/anaconda3/envs/video/lib/python3.12/site-packages/flash_attn/ops/fused_dense.py:70: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @custom_bwd
+/home/sorlova/anaconda3/envs/video/lib/python3.12/site-packages/flash_attn/ops/fused_dense.py:251: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @custom_fwd
+/home/sorlova/anaconda3/envs/video/lib/python3.12/site-packages/flash_attn/ops/fused_dense.py:348: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @custom_bwd
+/gpfs/home1/sorlova/repos/AITHENA/NewStage/VideoMAE/InternVideo2_single_modality/models/internvl_clip_vision.py:145: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @torch.cuda.amp.autocast(enabled=False)
+/gpfs/home1/sorlova/repos/AITHENA/NewStage/VideoMAE/InternVideo2_single_modality/models/internvideo2_teacher.py:153: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @torch.cuda.amp.autocast(enabled=False)
+/gpfs/home1/sorlova/repos/AITHENA/NewStage/VideoMAE/InternVideo2_single_modality/models/internvideo2.py:140: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @torch.cuda.amp.autocast(enabled=False)
+/gpfs/home1/sorlova/repos/AITHENA/NewStage/VideoMAE/InternVideo2_single_modality/models/internvideo2_cat.py:140: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @torch.cuda.amp.autocast(enabled=False)
+/gpfs/home1/sorlova/repos/AITHENA/NewStage/VideoMAE/InternVideo2_single_modality/models/internvideo2_ap.py:140: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @torch.cuda.amp.autocast(enabled=False)
+/gpfs/home1/sorlova/repos/AITHENA/NewStage/VideoMAE/InternVideo2_single_modality/models/internvideo2_pretrain.py:138: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @torch.cuda.amp.autocast(enabled=False)
+/gpfs/home1/sorlova/repos/AITHENA/NewStage/VideoMAE/InternVideo2_single_modality/models/internvideo2_distill.py:138: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+  @torch.cuda.amp.autocast(enabled=False)
+[2025-02-07 00:15:23,763] [INFO] [real_accelerator.py:219:get_accelerator] Setting ds_accelerator to cuda (auto detect)
+| distributed init (rank 0): env://, gpu 0
+Distributed process initialized successfully.
+	Rank 0, World Size: 1, Device: 0
+Namespace(batch_size=560, epochs=20, update_freq=1, save_ckpt_freq=1, steps_per_print=1, use_ceph_checkpoint=False, ceph_checkpoint_prefix='', ckpt_path_split='/exp/', model='internvideo2_small_patch14_224', tubelet_size=1, input_size=224, layer_scale_init_value=1e-05, layerscale_no_force_fp32=False, sep_pos_embed=False, center_init=False, fc_drop_rate=0.0, drop=0.0, attn_drop_rate=0.0, drop_path=0.1, head_drop_path=0.0, qkv_bias=False, disable_eval_during_finetuning=False, model_ema=False, model_ema_decay=0.9999, model_ema_force_cpu=False, loss='crossentropy', opt='adamw', opt_eps=1e-08, opt_betas=[0.9, 0.999, 7.0], clip_grad=None, momentum=0.9, weight_decay=0.05, weight_decay_end=None, lr=0.0005, layer_decay=0.75, warmup_lr=1e-06, min_lr=1e-06, warmup_epochs=5, warmup_steps=-1, color_jitter=0.4, num_sample=1, aa='rand-m3-n3-mstd0.5-inc1', smoothing=0.0, train_interpolation='bicubic', crop_pct=None, short_side_size=224, test_num_segment=1, test_num_crop=1, reprob=0.25, remode='pixel', recount=1, resplit=False, mixup=0.0, cutmix=0.0, cutmix_minmax=None, mixup_prob=1.0, mixup_switch_prob=0.5, mixup_mode='batch', finetune='logs/baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3/checkpoint-6.pth', delete_head=False, model_key='model|module', model_prefix='', init_scale=0.001, use_checkpoint=False, checkpoint_num=0, use_mean_pooling=True, final_reduction='fc_norm', freeze_layers=None, prefix='', split=' ', filename_tmpl='img_{:05}.jpg', data_path='/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/DADA2K', eval_data_path=None, nb_classes=2, imagenet_default_mean_and_std=True, use_decord=False, num_segments=1, num_frames=16, sampling_rate=1, sampling_rate_val=-1, view_fps=10, data_set='DADA2K', output_dir='logs/baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3/eval_DADA2K_ckpt_6', log_dir='logs/baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3/eval_DADA2K_ckpt_6', device='cuda', seed=424242, resume='', auto_resume=True, nb_samples_per_epoch=0, save_ckpt=True, start_epoch=0, test_best=False, eval=True, dist_eval=True, num_workers=8, pin_mem=True, world_size=1, local_rank=-1, dist_on_itp=False, dist_url='env://', enable_deepspeed=True, bf16=False, zero_stage=0, eval_option='10_6', deepspeed=False, deepspeed_config='logs/baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3/eval_DADA2K_ckpt_6/deepspeed_config.json', deepscale=False, deepscale_config=None, rank=0, gpu=0, distributed=True, dist_backend='nccl')
+Part 1/2. Reading and checking clips:   0%|          | 0/1023 [00:00<?, ?it/s]Part 1/2. Reading and checking clips:   0%|          | 2/1023 [00:00<01:44,  9.79it/s]Part 1/2. Reading and checking clips:   0%|          | 4/1023 [00:00<01:26, 11.74it/s]Part 1/2. Reading and checking clips:   1%|          | 7/1023 [00:00<01:04, 15.76it/s]Part 1/2. Reading and checking clips:   1%|          | 9/1023 [00:00<01:11, 14.21it/s]Part 1/2. Reading and checking clips:   1%|          | 12/1023 [00:00<01:03, 15.84it/s]Part 1/2. Reading and checking clips:   1%|▏         | 14/1023 [00:00<01:07, 15.02it/s]Part 1/2. Reading and checking clips:   2%|▏         | 17/1023 [00:01<01:00, 16.59it/s]Part 1/2. Reading and checking clips:   2%|▏         | 19/1023 [00:01<01:06, 15.03it/s]Part 1/2. Reading and checking clips:   2%|▏         | 21/1023 [00:01<01:03, 15.74it/s]Part 1/2. Reading and checking clips:   2%|▏         | 24/1023 [00:01<01:01, 16.33it/s]Part 1/2. Reading and checking clips:   3%|▎         | 27/1023 [00:01<01:01, 16.27it/s]Part 1/2. Reading and checking clips:   3%|▎         | 30/1023 [00:01<00:57, 17.38it/s]Part 1/2. Reading and checking clips:   3%|▎         | 32/1023 [00:02<01:01, 16.04it/s]Part 1/2. Reading and checking clips:   3%|▎         | 35/1023 [00:02<00:56, 17.37it/s]Part 1/2. Reading and checking clips:   4%|▎         | 38/1023 [00:02<00:54, 18.10it/s]Part 1/2. Reading and checking clips:   4%|▍         | 41/1023 [00:02<00:53, 18.22it/s]Part 1/2. Reading and checking clips:   4%|▍         | 43/1023 [00:02<00:53, 18.45it/s]Part 1/2. Reading and checking clips:   5%|▍         | 49/1023 [00:02<00:34, 28.00it/s]Part 1/2. Reading and checking clips:   5%|▌         | 53/1023 [00:02<00:33, 29.28it/s]Part 1/2. Reading and checking clips:   6%|▌         | 57/1023 [00:02<00:30, 31.86it/s]Part 1/2. Reading and checking clips:   6%|▌         | 61/1023 [00:03<00:30, 31.84it/s]Part 1/2. Reading and checking clips:   6%|▋         | 65/1023 [00:03<00:30, 31.42it/s]Part 1/2. Reading and checking clips:   7%|▋         | 69/1023 [00:03<00:30, 31.46it/s]Part 1/2. Reading and checking clips:   7%|▋         | 73/1023 [00:03<00:34, 27.26it/s]Part 1/2. Reading and checking clips:   8%|▊         | 77/1023 [00:03<00:36, 26.08it/s]Part 1/2. Reading and checking clips:   8%|▊         | 80/1023 [00:03<00:41, 22.50it/s]Part 1/2. Reading and checking clips:   8%|▊         | 83/1023 [00:04<00:47, 19.86it/s]Part 1/2. Reading and checking clips:   8%|▊         | 86/1023 [00:04<00:58, 16.13it/s]Part 1/2. Reading and checking clips:   9%|▊         | 89/1023 [00:04<00:55, 16.97it/s]Part 1/2. Reading and checking clips:   9%|▉         | 91/1023 [00:04<00:55, 16.76it/s]Part 1/2. Reading and checking clips:   9%|▉         | 93/1023 [00:04<00:57, 16.05it/s]Part 1/2. Reading and checking clips:   9%|▉         | 95/1023 [00:04<01:02, 14.86it/s]Part 1/2. Reading and checking clips:   9%|▉         | 97/1023 [00:05<01:08, 13.58it/s]Part 1/2. Reading and checking clips:  10%|▉         | 100/1023 [00:05<01:00, 15.14it/s]Part 1/2. Reading and checking clips:  10%|▉         | 102/1023 [00:05<01:02, 14.77it/s]Part 1/2. Reading and checking clips:  10%|█         | 104/1023 [00:05<00:58, 15.81it/s]Part 1/2. Reading and checking clips:  10%|█         | 106/1023 [00:05<01:00, 15.18it/s]Part 1/2. Reading and checking clips:  11%|█         | 108/1023 [00:05<01:04, 14.23it/s]Part 1/2. Reading and checking clips:  11%|█         | 110/1023 [00:05<01:05, 13.85it/s]Part 1/2. Reading and checking clips:  11%|█         | 113/1023 [00:06<01:00, 14.97it/s]Part 1/2. Reading and checking clips:  11%|█         | 115/1023 [00:06<01:01, 14.65it/s]Part 1/2. Reading and checking clips:  11%|█▏        | 117/1023 [00:06<01:03, 14.17it/s]Part 1/2. Reading and checking clips:  12%|█▏        | 119/1023 [00:06<00:59, 15.14it/s]Part 1/2. Reading and checking clips:  12%|█▏        | 121/1023 [00:06<01:05, 13.69it/s]Part 1/2. Reading and checking clips:  12%|█▏        | 123/1023 [00:06<01:08, 13.16it/s]Part 1/2. Reading and checking clips:  12%|█▏        | 125/1023 [00:07<01:04, 13.95it/s]Part 1/2. Reading and checking clips:  12%|█▏        | 127/1023 [00:07<01:03, 14.08it/s]Part 1/2. Reading and checking clips:  13%|█▎        | 129/1023 [00:07<01:09, 12.79it/s]Part 1/2. Reading and checking clips:  13%|█▎        | 131/1023 [00:07<01:13, 12.14it/s]Part 1/2. Reading and checking clips:  13%|█▎        | 133/1023 [00:07<01:12, 12.21it/s]Part 1/2. Reading and checking clips:  13%|█▎        | 135/1023 [00:07<01:15, 11.75it/s]Part 1/2. Reading and checking clips:  13%|█▎        | 137/1023 [00:08<01:11, 12.33it/s]Part 1/2. Reading and checking clips:  14%|█▎        | 139/1023 [00:08<01:12, 12.26it/s]Part 1/2. Reading and checking clips:  14%|█▍        | 142/1023 [00:08<00:55, 15.85it/s]Part 1/2. Reading and checking clips:  14%|█▍        | 145/1023 [00:08<00:52, 16.75it/s]Part 1/2. Reading and checking clips:  14%|█▍        | 147/1023 [00:08<00:57, 15.21it/s]Part 1/2. Reading and checking clips:  15%|█▍        | 149/1023 [00:08<00:59, 14.74it/s]Part 1/2. Reading and checking clips:  15%|█▍        | 152/1023 [00:09<00:59, 14.69it/s]Part 1/2. Reading and checking clips:  15%|█▌        | 154/1023 [00:09<01:02, 13.96it/s]Part 1/2. Reading and checking clips:  15%|█▌        | 156/1023 [00:09<01:05, 13.18it/s]Part 1/2. Reading and checking clips:  15%|█▌        | 158/1023 [00:09<01:08, 12.57it/s]Part 1/2. Reading and checking clips:  16%|█▌        | 160/1023 [00:09<01:02, 13.90it/s]Part 1/2. Reading and checking clips:  16%|█▌        | 163/1023 [00:09<00:56, 15.28it/s]Part 1/2. Reading and checking clips:  16%|█▌        | 165/1023 [00:09<01:00, 14.17it/s]Part 1/2. Reading and checking clips:  16%|█▋        | 167/1023 [00:10<00:58, 14.63it/s]Part 1/2. Reading and checking clips:  17%|█▋        | 170/1023 [00:10<00:52, 16.13it/s]Part 1/2. Reading and checking clips:  17%|█▋        | 172/1023 [00:10<00:56, 15.09it/s]Part 1/2. Reading and checking clips:  17%|█▋        | 174/1023 [00:10<00:57, 14.82it/s]Part 1/2. Reading and checking clips:  17%|█▋        | 176/1023 [00:10<00:55, 15.13it/s]Part 1/2. Reading and checking clips:  17%|█▋        | 178/1023 [00:10<00:57, 14.75it/s]Part 1/2. Reading and checking clips:  18%|█▊        | 180/1023 [00:10<00:54, 15.50it/s]Part 1/2. Reading and checking clips:  18%|█▊        | 182/1023 [00:11<00:53, 15.87it/s]Part 1/2. Reading and checking clips:  18%|█▊        | 184/1023 [00:11<00:59, 14.22it/s]Part 1/2. Reading and checking clips:  18%|█▊        | 186/1023 [00:11<00:55, 14.97it/s]Part 1/2. Reading and checking clips:  18%|█▊        | 188/1023 [00:11<00:51, 16.10it/s]Part 1/2. Reading and checking clips:  19%|█▊        | 190/1023 [00:11<00:51, 16.33it/s]Part 1/2. Reading and checking clips:  19%|█▉        | 192/1023 [00:11<00:58, 14.24it/s]Part 1/2. Reading and checking clips:  19%|█▉        | 195/1023 [00:11<00:54, 15.12it/s]Part 1/2. Reading and checking clips:  19%|█▉        | 197/1023 [00:12<00:51, 16.09it/s]Part 1/2. Reading and checking clips:  19%|█▉        | 199/1023 [00:12<00:54, 15.13it/s]Part 1/2. Reading and checking clips:  20%|█▉        | 201/1023 [00:12<00:51, 15.99it/s]Part 1/2. Reading and checking clips:  20%|█▉        | 204/1023 [00:12<00:47, 17.13it/s]Part 1/2. Reading and checking clips:  20%|██        | 206/1023 [00:12<00:48, 16.72it/s]Part 1/2. Reading and checking clips:  20%|██        | 208/1023 [00:12<00:48, 16.89it/s]Part 1/2. Reading and checking clips:  21%|██        | 210/1023 [00:12<00:53, 15.30it/s]Part 1/2. Reading and checking clips:  21%|██        | 212/1023 [00:12<00:54, 14.80it/s]Part 1/2. Reading and checking clips:  21%|██        | 214/1023 [00:13<00:50, 15.94it/s]Part 1/2. Reading and checking clips:  21%|██        | 216/1023 [00:13<00:48, 16.62it/s]Part 1/2. Reading and checking clips:  21%|██▏       | 218/1023 [00:13<00:49, 16.38it/s]Part 1/2. Reading and checking clips:  22%|██▏       | 220/1023 [00:13<00:55, 14.52it/s]Part 1/2. Reading and checking clips:  22%|██▏       | 222/1023 [00:13<01:00, 13.19it/s]Part 1/2. Reading and checking clips:  22%|██▏       | 224/1023 [00:13<00:57, 14.00it/s]Part 1/2. Reading and checking clips:  22%|██▏       | 226/1023 [00:13<00:55, 14.24it/s]Part 1/2. Reading and checking clips:  22%|██▏       | 228/1023 [00:14<00:56, 13.97it/s]Part 1/2. Reading and checking clips:  22%|██▏       | 230/1023 [00:14<00:59, 13.36it/s]Part 1/2. Reading and checking clips:  23%|██▎       | 232/1023 [00:14<00:57, 13.74it/s]Part 1/2. Reading and checking clips:  23%|██▎       | 235/1023 [00:14<00:51, 15.25it/s]Part 1/2. Reading and checking clips:  23%|██▎       | 238/1023 [00:14<00:43, 18.23it/s]Part 1/2. Reading and checking clips:  23%|██▎       | 240/1023 [00:14<00:45, 17.20it/s]Part 1/2. Reading and checking clips:  24%|██▎       | 242/1023 [00:14<00:52, 14.76it/s]Part 1/2. Reading and checking clips:  24%|██▍       | 244/1023 [00:15<00:57, 13.60it/s]Part 1/2. Reading and checking clips:  24%|██▍       | 246/1023 [00:15<00:59, 13.14it/s]Part 1/2. Reading and checking clips:  24%|██▍       | 248/1023 [00:15<00:57, 13.36it/s]Part 1/2. Reading and checking clips:  24%|██▍       | 250/1023 [00:15<00:59, 13.08it/s]Part 1/2. Reading and checking clips:  25%|██▍       | 252/1023 [00:15<00:58, 13.22it/s]Part 1/2. Reading and checking clips:  25%|██▍       | 254/1023 [00:15<00:58, 13.23it/s]Part 1/2. Reading and checking clips:  25%|██▌       | 256/1023 [00:16<00:59, 12.85it/s]Part 1/2. Reading and checking clips:  25%|██▌       | 258/1023 [00:16<01:02, 12.33it/s]Part 1/2. Reading and checking clips:  25%|██▌       | 260/1023 [00:16<00:56, 13.46it/s]Part 1/2. Reading and checking clips:  26%|██▌       | 262/1023 [00:16<01:00, 12.67it/s]Part 1/2. Reading and checking clips:  26%|██▌       | 264/1023 [00:16<00:57, 13.13it/s]Part 1/2. Reading and checking clips:  26%|██▌       | 267/1023 [00:16<00:51, 14.64it/s]Part 1/2. Reading and checking clips:  26%|██▋       | 269/1023 [00:17<00:54, 13.75it/s]Part 1/2. Reading and checking clips:  26%|██▋       | 271/1023 [00:17<00:51, 14.49it/s]Part 1/2. Reading and checking clips:  27%|██▋       | 273/1023 [00:17<00:51, 14.59it/s]Part 1/2. Reading and checking clips:  27%|██▋       | 275/1023 [00:17<00:54, 13.71it/s]Part 1/2. Reading and checking clips:  27%|██▋       | 277/1023 [00:17<00:59, 12.61it/s]Part 1/2. Reading and checking clips:  27%|██▋       | 279/1023 [00:17<00:59, 12.45it/s]Part 1/2. Reading and checking clips:  27%|██▋       | 281/1023 [00:17<01:02, 11.96it/s]Part 1/2. Reading and checking clips:  28%|██▊       | 283/1023 [00:18<01:00, 12.28it/s]Part 1/2. Reading and checking clips:  28%|██▊       | 287/1023 [00:18<00:44, 16.45it/s]Part 1/2. Reading and checking clips:  28%|██▊       | 289/1023 [00:18<00:45, 16.10it/s]Part 1/2. Reading and checking clips:  29%|██▊       | 292/1023 [00:18<00:39, 18.58it/s]Part 1/2. Reading and checking clips:  29%|██▉       | 296/1023 [00:18<00:31, 22.77it/s]Part 1/2. Reading and checking clips:  29%|██▉       | 299/1023 [00:18<00:40, 18.07it/s]Part 1/2. Reading and checking clips:  30%|██▉       | 302/1023 [00:19<00:43, 16.69it/s]Part 1/2. Reading and checking clips:  30%|██▉       | 304/1023 [00:19<00:48, 14.87it/s]Part 1/2. Reading and checking clips:  30%|██▉       | 306/1023 [00:19<00:51, 13.99it/s]Part 1/2. Reading and checking clips:  30%|███       | 308/1023 [00:19<00:50, 14.13it/s]Part 1/2. Reading and checking clips:  30%|███       | 310/1023 [00:19<00:47, 14.96it/s]Part 1/2. Reading and checking clips:  30%|███       | 312/1023 [00:19<00:46, 15.39it/s]Part 1/2. Reading and checking clips:  31%|███       | 314/1023 [00:20<00:49, 14.31it/s]Part 1/2. Reading and checking clips:  31%|███       | 316/1023 [00:20<00:51, 13.72it/s]Part 1/2. Reading and checking clips:  31%|███       | 318/1023 [00:20<00:48, 14.67it/s]Part 1/2. Reading and checking clips:  31%|███▏      | 320/1023 [00:20<00:50, 14.03it/s]Part 1/2. Reading and checking clips:  31%|███▏      | 322/1023 [00:20<00:53, 13.02it/s]Part 1/2. Reading and checking clips:  32%|███▏      | 324/1023 [00:20<00:54, 12.76it/s]Part 1/2. Reading and checking clips:  32%|███▏      | 326/1023 [00:20<00:50, 13.86it/s]Part 1/2. Reading and checking clips:  32%|███▏      | 328/1023 [00:21<00:49, 14.15it/s]Part 1/2. Reading and checking clips:  32%|███▏      | 330/1023 [00:21<00:50, 13.63it/s]Part 1/2. Reading and checking clips:  32%|███▏      | 332/1023 [00:21<00:51, 13.49it/s]Part 1/2. Reading and checking clips:  33%|███▎      | 334/1023 [00:21<00:54, 12.53it/s]Part 1/2. Reading and checking clips:  33%|███▎      | 336/1023 [00:21<00:52, 12.99it/s]Part 1/2. Reading and checking clips:  33%|███▎      | 338/1023 [00:21<00:55, 12.30it/s]Part 1/2. Reading and checking clips:  33%|███▎      | 340/1023 [00:21<00:53, 12.70it/s]Part 1/2. Reading and checking clips:  33%|███▎      | 342/1023 [00:22<00:50, 13.43it/s]Part 1/2. Reading and checking clips:  34%|███▎      | 344/1023 [00:22<00:50, 13.47it/s]Part 1/2. Reading and checking clips:  34%|███▍      | 347/1023 [00:22<00:40, 16.65it/s]Part 1/2. Reading and checking clips:  34%|███▍      | 350/1023 [00:22<00:34, 19.74it/s]Part 1/2. Reading and checking clips:  35%|███▍      | 353/1023 [00:22<00:37, 17.78it/s]Part 1/2. Reading and checking clips:  35%|███▍      | 355/1023 [00:22<00:39, 16.95it/s]Part 1/2. Reading and checking clips:  35%|███▍      | 358/1023 [00:23<00:39, 17.00it/s]Part 1/2. Reading and checking clips:  35%|███▌      | 360/1023 [00:23<00:42, 15.64it/s]Part 1/2. Reading and checking clips:  35%|███▌      | 362/1023 [00:23<00:40, 16.43it/s]Part 1/2. Reading and checking clips:  36%|███▌      | 364/1023 [00:23<00:41, 15.73it/s]Part 1/2. Reading and checking clips:  36%|███▌      | 366/1023 [00:23<00:43, 15.14it/s]Part 1/2. Reading and checking clips:  36%|███▌      | 368/1023 [00:23<00:45, 14.41it/s]Part 1/2. Reading and checking clips:  36%|███▋      | 371/1023 [00:23<00:41, 15.90it/s]Part 1/2. Reading and checking clips:  36%|███▋      | 373/1023 [00:24<00:46, 13.87it/s]Part 1/2. Reading and checking clips:  37%|███▋      | 375/1023 [00:24<00:45, 14.12it/s]Part 1/2. Reading and checking clips:  37%|███▋      | 377/1023 [00:24<00:45, 14.24it/s]Part 1/2. Reading and checking clips:  37%|███▋      | 379/1023 [00:24<00:43, 14.76it/s]Part 1/2. Reading and checking clips:  37%|███▋      | 381/1023 [00:24<00:45, 13.96it/s]Part 1/2. Reading and checking clips:  37%|███▋      | 383/1023 [00:24<00:50, 12.71it/s]Part 1/2. Reading and checking clips:  38%|███▊      | 385/1023 [00:24<00:52, 12.16it/s]Part 1/2. Reading and checking clips:  38%|███▊      | 387/1023 [00:25<00:51, 12.37it/s]Part 1/2. Reading and checking clips:  38%|███▊      | 389/1023 [00:25<00:55, 11.47it/s]Part 1/2. Reading and checking clips:  38%|███▊      | 391/1023 [00:25<00:52, 12.07it/s]Part 1/2. Reading and checking clips:  38%|███▊      | 393/1023 [00:25<00:46, 13.56it/s]Part 1/2. Reading and checking clips:  39%|███▊      | 396/1023 [00:25<00:41, 15.02it/s]Part 1/2. Reading and checking clips:  39%|███▉      | 398/1023 [00:25<00:39, 15.95it/s]Part 1/2. Reading and checking clips:  39%|███▉      | 400/1023 [00:25<00:37, 16.78it/s]Part 1/2. Reading and checking clips:  39%|███▉      | 402/1023 [00:26<00:41, 14.93it/s]Part 1/2. Reading and checking clips:  39%|███▉      | 404/1023 [00:26<00:40, 15.34it/s]Part 1/2. Reading and checking clips:  40%|███▉      | 406/1023 [00:26<00:40, 15.13it/s]Part 1/2. Reading and checking clips:  40%|███▉      | 408/1023 [00:26<00:47, 13.07it/s]Part 1/2. Reading and checking clips:  40%|████      | 410/1023 [00:26<00:51, 11.84it/s]Part 1/2. Reading and checking clips:  40%|████      | 412/1023 [00:26<00:52, 11.73it/s]Part 1/2. Reading and checking clips:  40%|████      | 414/1023 [00:27<00:49, 12.33it/s]Part 1/2. Reading and checking clips:  41%|████      | 416/1023 [00:27<00:44, 13.66it/s]Part 1/2. Reading and checking clips:  41%|████      | 419/1023 [00:27<00:38, 15.66it/s]Part 1/2. Reading and checking clips:  41%|████      | 421/1023 [00:27<00:43, 13.91it/s]Part 1/2. Reading and checking clips:  41%|████▏     | 423/1023 [00:27<00:46, 12.92it/s]Part 1/2. Reading and checking clips:  42%|████▏     | 425/1023 [00:27<00:47, 12.64it/s]Part 1/2. Reading and checking clips:  42%|████▏     | 427/1023 [00:28<00:42, 14.04it/s]Part 1/2. Reading and checking clips:  42%|████▏     | 429/1023 [00:28<00:40, 14.52it/s]Part 1/2. Reading and checking clips:  42%|████▏     | 431/1023 [00:28<00:43, 13.55it/s]Part 1/2. Reading and checking clips:  42%|████▏     | 433/1023 [00:28<00:42, 14.02it/s]Part 1/2. Reading and checking clips:  43%|████▎     | 435/1023 [00:28<00:41, 14.14it/s]Part 1/2. Reading and checking clips:  43%|████▎     | 437/1023 [00:28<00:44, 13.09it/s]Part 1/2. Reading and checking clips:  43%|████▎     | 439/1023 [00:28<00:44, 13.05it/s]Part 1/2. Reading and checking clips:  43%|████▎     | 441/1023 [00:29<00:43, 13.30it/s]Part 1/2. Reading and checking clips:  43%|████▎     | 443/1023 [00:29<00:44, 13.16it/s]Part 1/2. Reading and checking clips:  43%|████▎     | 445/1023 [00:29<00:41, 14.03it/s]Part 1/2. Reading and checking clips:  44%|████▎     | 447/1023 [00:29<00:43, 13.09it/s]Part 1/2. Reading and checking clips:  44%|████▍     | 449/1023 [00:29<00:45, 12.68it/s]Part 1/2. Reading and checking clips:  44%|████▍     | 451/1023 [00:29<00:41, 13.65it/s]Part 1/2. Reading and checking clips:  44%|████▍     | 453/1023 [00:30<00:45, 12.53it/s]Part 1/2. Reading and checking clips:  44%|████▍     | 455/1023 [00:30<00:44, 12.79it/s]Part 1/2. Reading and checking clips:  45%|████▍     | 458/1023 [00:30<00:35, 15.74it/s]Part 1/2. Reading and checking clips:  45%|████▍     | 460/1023 [00:30<00:35, 15.70it/s]Part 1/2. Reading and checking clips:  45%|████▌     | 463/1023 [00:30<00:33, 16.59it/s]Part 1/2. Reading and checking clips:  45%|████▌     | 465/1023 [00:30<00:33, 16.79it/s]Part 1/2. Reading and checking clips:  46%|████▌     | 467/1023 [00:30<00:33, 16.41it/s]Part 1/2. Reading and checking clips:  46%|████▌     | 469/1023 [00:30<00:34, 15.88it/s]Part 1/2. Reading and checking clips:  46%|████▌     | 471/1023 [00:31<00:37, 14.56it/s]Part 1/2. Reading and checking clips:  46%|████▌     | 473/1023 [00:31<00:35, 15.28it/s]Part 1/2. Reading and checking clips:  46%|████▋     | 475/1023 [00:31<00:37, 14.65it/s]Part 1/2. Reading and checking clips:  47%|████▋     | 477/1023 [00:31<00:37, 14.61it/s]Part 1/2. Reading and checking clips:  47%|████▋     | 479/1023 [00:31<00:34, 15.75it/s]Part 1/2. Reading and checking clips:  47%|████▋     | 481/1023 [00:31<00:37, 14.43it/s]Part 1/2. Reading and checking clips:  47%|████▋     | 483/1023 [00:31<00:34, 15.67it/s]Part 1/2. Reading and checking clips:  47%|████▋     | 485/1023 [00:32<00:36, 14.56it/s]Part 1/2. Reading and checking clips:  48%|████▊     | 487/1023 [00:32<00:34, 15.38it/s]Part 1/2. Reading and checking clips:  48%|████▊     | 489/1023 [00:32<00:35, 14.89it/s]Part 1/2. Reading and checking clips:  48%|████▊     | 491/1023 [00:32<00:39, 13.60it/s]Part 1/2. Reading and checking clips:  48%|████▊     | 493/1023 [00:32<00:41, 12.92it/s]Part 1/2. Reading and checking clips:  48%|████▊     | 495/1023 [00:32<00:43, 12.12it/s]Part 1/2. Reading and checking clips:  49%|████▊     | 498/1023 [00:32<00:35, 14.96it/s]Part 1/2. Reading and checking clips:  49%|████▉     | 500/1023 [00:33<00:35, 14.93it/s]Part 1/2. Reading and checking clips:  49%|████▉     | 502/1023 [00:33<00:35, 14.64it/s]Part 1/2. Reading and checking clips:  49%|████▉     | 504/1023 [00:33<00:38, 13.47it/s]Part 1/2. Reading and checking clips:  49%|████▉     | 506/1023 [00:33<00:43, 11.99it/s]Part 1/2. Reading and checking clips:  50%|████▉     | 508/1023 [00:33<00:40, 12.58it/s]Part 1/2. Reading and checking clips:  50%|████▉     | 510/1023 [00:33<00:39, 13.08it/s]Part 1/2. Reading and checking clips:  50%|█████     | 513/1023 [00:34<00:33, 15.22it/s]Part 1/2. Reading and checking clips:  50%|█████     | 515/1023 [00:34<00:33, 15.18it/s]Part 1/2. Reading and checking clips:  51%|█████     | 518/1023 [00:34<00:32, 15.60it/s]Part 1/2. Reading and checking clips:  51%|█████     | 520/1023 [00:34<00:31, 15.96it/s]Part 1/2. Reading and checking clips:  51%|█████     | 522/1023 [00:34<00:32, 15.47it/s]Part 1/2. Reading and checking clips:  51%|█████     | 524/1023 [00:34<00:35, 14.14it/s]Part 1/2. Reading and checking clips:  51%|█████▏    | 526/1023 [00:34<00:35, 14.18it/s]Part 1/2. Reading and checking clips:  52%|█████▏    | 528/1023 [00:35<00:33, 14.74it/s]Part 1/2. Reading and checking clips:  52%|█████▏    | 530/1023 [00:35<00:33, 14.54it/s]Part 1/2. Reading and checking clips:  52%|█████▏    | 532/1023 [00:35<00:35, 13.97it/s]Part 1/2. Reading and checking clips:  52%|█████▏    | 534/1023 [00:35<00:35, 13.80it/s]Part 1/2. Reading and checking clips:  52%|█████▏    | 536/1023 [00:35<00:36, 13.32it/s]Part 1/2. Reading and checking clips:  53%|█████▎    | 539/1023 [00:35<00:31, 15.34it/s]Part 1/2. Reading and checking clips:  53%|█████▎    | 542/1023 [00:36<00:30, 15.75it/s]Part 1/2. Reading and checking clips:  53%|█████▎    | 544/1023 [00:36<00:31, 15.16it/s]Part 1/2. Reading and checking clips:  53%|█████▎    | 546/1023 [00:36<00:34, 13.82it/s]Part 1/2. Reading and checking clips:  54%|█████▎    | 548/1023 [00:36<00:34, 13.71it/s]Part 1/2. Reading and checking clips:  54%|█████▍    | 551/1023 [00:36<00:30, 15.72it/s]Part 1/2. Reading and checking clips:  54%|█████▍    | 553/1023 [00:36<00:32, 14.63it/s]Part 1/2. Reading and checking clips:  54%|█████▍    | 555/1023 [00:36<00:32, 14.61it/s]Part 1/2. Reading and checking clips:  54%|█████▍    | 557/1023 [00:37<00:33, 13.78it/s]Part 1/2. Reading and checking clips:  55%|█████▍    | 559/1023 [00:37<00:33, 13.82it/s]Part 1/2. Reading and checking clips:  55%|█████▍    | 561/1023 [00:37<00:35, 12.85it/s]Part 1/2. Reading and checking clips:  55%|█████▌    | 563/1023 [00:37<00:36, 12.46it/s]Part 1/2. Reading and checking clips:  55%|█████▌    | 565/1023 [00:37<00:33, 13.83it/s]Part 1/2. Reading and checking clips:  55%|█████▌    | 567/1023 [00:37<00:32, 13.90it/s]Part 1/2. Reading and checking clips:  56%|█████▌    | 569/1023 [00:38<00:34, 13.01it/s]Part 1/2. Reading and checking clips:  56%|█████▌    | 571/1023 [00:38<00:38, 11.72it/s]Part 1/2. Reading and checking clips:  56%|█████▌    | 573/1023 [00:38<00:38, 11.81it/s]Part 1/2. Reading and checking clips:  56%|█████▌    | 575/1023 [00:38<00:36, 12.18it/s]Part 1/2. Reading and checking clips:  56%|█████▋    | 577/1023 [00:38<00:35, 12.65it/s]Part 1/2. Reading and checking clips:  57%|█████▋    | 580/1023 [00:38<00:31, 14.23it/s]Part 1/2. Reading and checking clips:  57%|█████▋    | 582/1023 [00:39<00:30, 14.24it/s]Part 1/2. Reading and checking clips:  57%|█████▋    | 584/1023 [00:39<00:30, 14.42it/s]Part 1/2. Reading and checking clips:  57%|█████▋    | 586/1023 [00:39<00:34, 12.85it/s]Part 1/2. Reading and checking clips:  57%|█████▋    | 588/1023 [00:39<00:35, 12.24it/s]Part 1/2. Reading and checking clips:  58%|█████▊    | 590/1023 [00:39<00:32, 13.12it/s]Part 1/2. Reading and checking clips:  58%|█████▊    | 592/1023 [00:39<00:35, 12.26it/s]Part 1/2. Reading and checking clips:  58%|█████▊    | 594/1023 [00:39<00:34, 12.50it/s]Part 1/2. Reading and checking clips:  58%|█████▊    | 596/1023 [00:40<00:36, 11.83it/s]Part 1/2. Reading and checking clips:  58%|█████▊    | 598/1023 [00:40<00:32, 12.91it/s]Part 1/2. Reading and checking clips:  59%|█████▊    | 600/1023 [00:40<00:35, 11.87it/s]Part 1/2. Reading and checking clips:  59%|█████▉    | 602/1023 [00:40<00:37, 11.13it/s]Part 1/2. Reading and checking clips:  59%|█████▉    | 604/1023 [00:40<00:35, 11.68it/s]Part 1/2. Reading and checking clips:  59%|█████▉    | 606/1023 [00:41<00:36, 11.57it/s]Part 1/2. Reading and checking clips:  59%|█████▉    | 608/1023 [00:41<00:36, 11.23it/s]Part 1/2. Reading and checking clips:  60%|█████▉    | 610/1023 [00:41<00:34, 12.09it/s]Part 1/2. Reading and checking clips:  60%|█████▉    | 612/1023 [00:41<00:30, 13.30it/s]Part 1/2. Reading and checking clips:  60%|██████    | 614/1023 [00:41<00:32, 12.66it/s]Part 1/2. Reading and checking clips:  60%|██████    | 617/1023 [00:41<00:28, 14.18it/s]Part 1/2. Reading and checking clips:  61%|██████    | 619/1023 [00:41<00:29, 13.93it/s]Part 1/2. Reading and checking clips:  61%|██████    | 621/1023 [00:42<00:30, 13.25it/s]Part 1/2. Reading and checking clips:  61%|██████    | 624/1023 [00:42<00:24, 16.17it/s]Part 1/2. Reading and checking clips:  61%|██████▏   | 627/1023 [00:42<00:23, 17.18it/s]Part 1/2. Reading and checking clips:  62%|██████▏   | 630/1023 [00:42<00:22, 17.80it/s]Part 1/2. Reading and checking clips:  62%|██████▏   | 632/1023 [00:42<00:23, 16.31it/s]Part 1/2. Reading and checking clips:  62%|██████▏   | 634/1023 [00:42<00:26, 14.74it/s]Part 1/2. Reading and checking clips:  62%|██████▏   | 636/1023 [00:43<00:28, 13.45it/s]Part 1/2. Reading and checking clips:  62%|██████▏   | 638/1023 [00:43<00:30, 12.64it/s]Part 1/2. Reading and checking clips:  63%|██████▎   | 640/1023 [00:43<00:31, 12.21it/s]Part 1/2. Reading and checking clips:  63%|██████▎   | 642/1023 [00:43<00:32, 11.84it/s]Part 1/2. Reading and checking clips:  63%|██████▎   | 644/1023 [00:43<00:32, 11.76it/s]Part 1/2. Reading and checking clips:  63%|██████▎   | 646/1023 [00:43<00:28, 13.07it/s]Part 1/2. Reading and checking clips:  63%|██████▎   | 648/1023 [00:44<00:28, 13.26it/s]Part 1/2. Reading and checking clips:  64%|██████▎   | 650/1023 [00:44<00:27, 13.55it/s]Part 1/2. Reading and checking clips:  64%|██████▎   | 652/1023 [00:44<00:27, 13.38it/s]Part 1/2. Reading and checking clips:  64%|██████▍   | 654/1023 [00:44<00:27, 13.46it/s]Part 1/2. Reading and checking clips:  64%|██████▍   | 656/1023 [00:44<00:28, 12.89it/s]Part 1/2. Reading and checking clips:  64%|██████▍   | 658/1023 [00:44<00:28, 12.81it/s]Part 1/2. Reading and checking clips:  65%|██████▍   | 660/1023 [00:44<00:27, 13.06it/s]Part 1/2. Reading and checking clips:  65%|██████▍   | 662/1023 [00:45<00:28, 12.59it/s]Part 1/2. Reading and checking clips:  65%|██████▍   | 664/1023 [00:45<00:27, 13.29it/s]Part 1/2. Reading and checking clips:  65%|██████▌   | 666/1023 [00:45<00:24, 14.40it/s]Part 1/2. Reading and checking clips:  65%|██████▌   | 668/1023 [00:45<00:24, 14.38it/s]Part 1/2. Reading and checking clips:  65%|██████▌   | 670/1023 [00:45<00:22, 15.40it/s]Part 1/2. Reading and checking clips:  66%|██████▌   | 672/1023 [00:45<00:24, 14.25it/s]Part 1/2. Reading and checking clips:  66%|██████▌   | 674/1023 [00:45<00:23, 15.06it/s]Part 1/2. Reading and checking clips:  66%|██████▌   | 676/1023 [00:46<00:27, 12.80it/s]Part 1/2. Reading and checking clips:  66%|██████▋   | 678/1023 [00:46<00:25, 13.56it/s]Part 1/2. Reading and checking clips:  66%|██████▋   | 680/1023 [00:46<00:26, 13.06it/s]Part 1/2. Reading and checking clips:  67%|██████▋   | 682/1023 [00:46<00:26, 12.63it/s]Part 1/2. Reading and checking clips:  67%|██████▋   | 684/1023 [00:46<00:27, 12.50it/s]Part 1/2. Reading and checking clips:  67%|██████▋   | 686/1023 [00:46<00:23, 14.07it/s]Part 1/2. Reading and checking clips:  67%|██████▋   | 688/1023 [00:47<00:24, 13.80it/s]Part 1/2. Reading and checking clips:  67%|██████▋   | 690/1023 [00:47<00:23, 14.09it/s]Part 1/2. Reading and checking clips:  68%|██████▊   | 692/1023 [00:47<00:22, 15.01it/s]Part 1/2. Reading and checking clips:  68%|██████▊   | 694/1023 [00:47<00:24, 13.67it/s]Part 1/2. Reading and checking clips:  68%|██████▊   | 696/1023 [00:47<00:22, 14.39it/s]Part 1/2. Reading and checking clips:  68%|██████▊   | 698/1023 [00:47<00:23, 13.69it/s]Part 1/2. Reading and checking clips:  68%|██████▊   | 700/1023 [00:47<00:24, 13.35it/s]Part 1/2. Reading and checking clips:  69%|██████▊   | 702/1023 [00:48<00:24, 13.15it/s]Part 1/2. Reading and checking clips:  69%|██████▉   | 704/1023 [00:48<00:24, 12.92it/s]Part 1/2. Reading and checking clips:  69%|██████▉   | 706/1023 [00:48<00:24, 12.98it/s]Part 1/2. Reading and checking clips:  69%|██████▉   | 708/1023 [00:48<00:24, 12.70it/s]Part 1/2. Reading and checking clips:  69%|██████▉   | 710/1023 [00:48<00:22, 13.83it/s]Part 1/2. Reading and checking clips:  70%|██████▉   | 712/1023 [00:48<00:23, 13.40it/s]Part 1/2. Reading and checking clips:  70%|██████▉   | 714/1023 [00:48<00:21, 14.54it/s]Part 1/2. Reading and checking clips:  70%|██████▉   | 716/1023 [00:49<00:21, 14.35it/s]Part 1/2. Reading and checking clips:  70%|███████   | 718/1023 [00:49<00:19, 15.54it/s]Part 1/2. Reading and checking clips:  70%|███████   | 720/1023 [00:49<00:20, 14.75it/s]Part 1/2. Reading and checking clips:  71%|███████   | 722/1023 [00:49<00:22, 13.11it/s]Part 1/2. Reading and checking clips:  71%|███████   | 724/1023 [00:49<00:22, 13.31it/s]Part 1/2. Reading and checking clips:  71%|███████   | 726/1023 [00:49<00:22, 13.07it/s]Part 1/2. Reading and checking clips:  71%|███████   | 728/1023 [00:49<00:23, 12.81it/s]Part 1/2. Reading and checking clips:  71%|███████▏  | 730/1023 [00:50<00:22, 12.74it/s]Part 1/2. Reading and checking clips:  72%|███████▏  | 733/1023 [00:50<00:18, 15.31it/s]Part 1/2. Reading and checking clips:  72%|███████▏  | 735/1023 [00:50<00:20, 14.20it/s]Part 1/2. Reading and checking clips:  72%|███████▏  | 737/1023 [00:50<00:19, 14.88it/s]Part 1/2. Reading and checking clips:  72%|███████▏  | 739/1023 [00:50<00:20, 13.60it/s]Part 1/2. Reading and checking clips:  72%|███████▏  | 741/1023 [00:50<00:19, 14.11it/s]Part 1/2. Reading and checking clips:  73%|███████▎  | 743/1023 [00:51<00:21, 12.98it/s]Part 1/2. Reading and checking clips:  73%|███████▎  | 745/1023 [00:51<00:22, 12.23it/s]Part 1/2. Reading and checking clips:  73%|███████▎  | 747/1023 [00:51<00:22, 12.24it/s]Part 1/2. Reading and checking clips:  73%|███████▎  | 749/1023 [00:51<00:21, 12.73it/s]Part 1/2. Reading and checking clips:  73%|███████▎  | 751/1023 [00:51<00:21, 12.44it/s]Part 1/2. Reading and checking clips:  74%|███████▎  | 753/1023 [00:51<00:22, 12.26it/s]Part 1/2. Reading and checking clips:  74%|███████▍  | 755/1023 [00:52<00:21, 12.36it/s]Part 1/2. Reading and checking clips:  74%|███████▍  | 757/1023 [00:52<00:20, 12.88it/s]Part 1/2. Reading and checking clips:  74%|███████▍  | 759/1023 [00:52<00:20, 12.60it/s]Part 1/2. Reading and checking clips:  74%|███████▍  | 761/1023 [00:52<00:21, 12.16it/s]Part 1/2. Reading and checking clips:  75%|███████▍  | 763/1023 [00:52<00:19, 13.06it/s]Part 1/2. Reading and checking clips:  75%|███████▍  | 765/1023 [00:52<00:20, 12.59it/s]Part 1/2. Reading and checking clips:  75%|███████▍  | 767/1023 [00:52<00:20, 12.22it/s]Part 1/2. Reading and checking clips:  75%|███████▌  | 769/1023 [00:53<00:20, 12.22it/s]Part 1/2. Reading and checking clips:  75%|███████▌  | 771/1023 [00:53<00:20, 12.49it/s]Part 1/2. Reading and checking clips:  76%|███████▌  | 773/1023 [00:53<00:20, 11.95it/s]Part 1/2. Reading and checking clips:  76%|███████▌  | 775/1023 [00:53<00:19, 12.69it/s]Part 1/2. Reading and checking clips:  76%|███████▌  | 777/1023 [00:53<00:19, 12.87it/s]Part 1/2. Reading and checking clips:  76%|███████▌  | 779/1023 [00:53<00:21, 11.55it/s]Part 1/2. Reading and checking clips:  76%|███████▋  | 781/1023 [00:54<00:18, 12.90it/s]Part 1/2. Reading and checking clips:  77%|███████▋  | 783/1023 [00:54<00:17, 13.94it/s]Part 1/2. Reading and checking clips:  77%|███████▋  | 785/1023 [00:54<00:17, 13.81it/s]Part 1/2. Reading and checking clips:  77%|███████▋  | 787/1023 [00:54<00:18, 12.79it/s]Part 1/2. Reading and checking clips:  77%|███████▋  | 789/1023 [00:54<00:19, 11.79it/s]Part 1/2. Reading and checking clips:  77%|███████▋  | 791/1023 [00:54<00:20, 11.48it/s]Part 1/2. Reading and checking clips:  78%|███████▊  | 793/1023 [00:55<00:19, 11.66it/s]Part 1/2. Reading and checking clips:  78%|███████▊  | 795/1023 [00:55<00:18, 12.50it/s]Part 1/2. Reading and checking clips:  78%|███████▊  | 798/1023 [00:55<00:15, 14.13it/s]Part 1/2. Reading and checking clips:  78%|███████▊  | 800/1023 [00:55<00:14, 15.18it/s]Part 1/2. Reading and checking clips:  78%|███████▊  | 803/1023 [00:55<00:11, 18.53it/s]Part 1/2. Reading and checking clips:  79%|███████▊  | 805/1023 [00:55<00:13, 15.61it/s]Part 1/2. Reading and checking clips:  79%|███████▉  | 807/1023 [00:55<00:13, 15.77it/s]Part 1/2. Reading and checking clips:  79%|███████▉  | 809/1023 [00:56<00:15, 14.17it/s]Part 1/2. Reading and checking clips:  79%|███████▉  | 811/1023 [00:56<00:14, 14.45it/s]Part 1/2. Reading and checking clips:  79%|███████▉  | 813/1023 [00:56<00:14, 14.61it/s]Part 1/2. Reading and checking clips:  80%|███████▉  | 815/1023 [00:56<00:14, 14.32it/s]Part 1/2. Reading and checking clips:  80%|███████▉  | 817/1023 [00:56<00:15, 13.19it/s]Part 1/2. Reading and checking clips:  80%|████████  | 819/1023 [00:56<00:15, 13.02it/s]Part 1/2. Reading and checking clips:  80%|████████  | 821/1023 [00:56<00:15, 13.10it/s]Part 1/2. Reading and checking clips:  80%|████████  | 823/1023 [00:57<00:16, 12.22it/s]Part 1/2. Reading and checking clips:  81%|████████  | 825/1023 [00:57<00:14, 13.23it/s]Part 1/2. Reading and checking clips:  81%|████████  | 827/1023 [00:57<00:15, 12.43it/s]Part 1/2. Reading and checking clips:  81%|████████  | 829/1023 [00:57<00:13, 13.88it/s]Part 1/2. Reading and checking clips:  81%|████████  | 831/1023 [00:57<00:13, 14.46it/s]Part 1/2. Reading and checking clips:  81%|████████▏ | 833/1023 [00:57<00:13, 13.88it/s]Part 1/2. Reading and checking clips:  82%|████████▏ | 835/1023 [00:58<00:14, 13.05it/s]Part 1/2. Reading and checking clips:  82%|████████▏ | 837/1023 [00:58<00:14, 12.79it/s]Part 1/2. Reading and checking clips:  82%|████████▏ | 839/1023 [00:58<00:14, 13.01it/s]Part 1/2. Reading and checking clips:  82%|████████▏ | 841/1023 [00:58<00:14, 12.56it/s]Part 1/2. Reading and checking clips:  83%|████████▎ | 844/1023 [00:58<00:11, 15.89it/s]Part 1/2. Reading and checking clips:  83%|████████▎ | 846/1023 [00:58<00:11, 15.28it/s]Part 1/2. Reading and checking clips:  83%|████████▎ | 849/1023 [00:58<00:10, 16.16it/s]Part 1/2. Reading and checking clips:  83%|████████▎ | 851/1023 [00:59<00:10, 15.67it/s]Part 1/2. Reading and checking clips:  83%|████████▎ | 853/1023 [00:59<00:10, 16.16it/s]Part 1/2. Reading and checking clips:  84%|████████▎ | 855/1023 [00:59<00:11, 14.84it/s]Part 1/2. Reading and checking clips:  84%|████████▍ | 857/1023 [00:59<00:10, 15.61it/s]Part 1/2. Reading and checking clips:  84%|████████▍ | 859/1023 [00:59<00:10, 15.49it/s]Part 1/2. Reading and checking clips:  84%|████████▍ | 861/1023 [00:59<00:11, 13.61it/s]Part 1/2. Reading and checking clips:  84%|████████▍ | 863/1023 [00:59<00:11, 13.92it/s]Part 1/2. Reading and checking clips:  85%|████████▍ | 865/1023 [01:00<00:11, 13.82it/s]Part 1/2. Reading and checking clips:  85%|████████▍ | 868/1023 [01:00<00:09, 16.38it/s]Part 1/2. Reading and checking clips:  85%|████████▌ | 870/1023 [01:00<00:09, 16.37it/s]Part 1/2. Reading and checking clips:  85%|████████▌ | 872/1023 [01:00<00:10, 14.82it/s]Part 1/2. Reading and checking clips:  85%|████████▌ | 874/1023 [01:00<00:09, 14.93it/s]Part 1/2. Reading and checking clips:  86%|████████▌ | 876/1023 [01:00<00:10, 13.47it/s]Part 1/2. Reading and checking clips:  86%|████████▌ | 878/1023 [01:00<00:11, 13.12it/s]Part 1/2. Reading and checking clips:  86%|████████▌ | 880/1023 [01:01<00:11, 12.50it/s]Part 1/2. Reading and checking clips:  86%|████████▌ | 882/1023 [01:01<00:10, 13.00it/s]Part 1/2. Reading and checking clips:  86%|████████▋ | 884/1023 [01:01<00:11, 11.91it/s]Part 1/2. Reading and checking clips:  87%|████████▋ | 887/1023 [01:01<00:09, 14.03it/s]Part 1/2. Reading and checking clips:  87%|████████▋ | 889/1023 [01:01<00:09, 13.51it/s]Part 1/2. Reading and checking clips:  87%|████████▋ | 891/1023 [01:02<00:13,  9.86it/s]Part 1/2. Reading and checking clips:  87%|████████▋ | 893/1023 [01:02<00:11, 11.01it/s]Part 1/2. Reading and checking clips:  87%|████████▋ | 895/1023 [01:02<00:10, 11.81it/s]Part 1/2. Reading and checking clips:  88%|████████▊ | 898/1023 [01:02<00:08, 14.32it/s]Part 1/2. Reading and checking clips:  88%|████████▊ | 900/1023 [01:02<00:08, 14.45it/s]Part 1/2. Reading and checking clips:  88%|████████▊ | 902/1023 [01:02<00:07, 15.20it/s]Part 1/2. Reading and checking clips:  88%|████████▊ | 904/1023 [01:02<00:08, 14.67it/s]Part 1/2. Reading and checking clips:  89%|████████▊ | 906/1023 [01:03<00:08, 14.03it/s]Part 1/2. Reading and checking clips:  89%|████████▉ | 909/1023 [01:03<00:06, 16.52it/s]Part 1/2. Reading and checking clips:  89%|████████▉ | 911/1023 [01:03<00:07, 15.26it/s]Part 1/2. Reading and checking clips:  89%|████████▉ | 913/1023 [01:03<00:07, 14.79it/s]Part 1/2. Reading and checking clips:  89%|████████▉ | 915/1023 [01:03<00:08, 13.41it/s]Part 1/2. Reading and checking clips:  90%|████████▉ | 918/1023 [01:03<00:06, 15.09it/s]Part 1/2. Reading and checking clips:  90%|████████▉ | 920/1023 [01:04<00:07, 13.94it/s]Part 1/2. Reading and checking clips:  90%|█████████ | 922/1023 [01:04<00:08, 11.74it/s]Part 1/2. Reading and checking clips:  90%|█████████ | 924/1023 [01:04<00:07, 12.81it/s]Part 1/2. Reading and checking clips:  91%|█████████ | 926/1023 [01:04<00:07, 12.41it/s]Part 1/2. Reading and checking clips:  91%|█████████ | 928/1023 [01:04<00:06, 13.67it/s]Part 1/2. Reading and checking clips:  91%|█████████ | 930/1023 [01:04<00:06, 13.46it/s]Part 1/2. Reading and checking clips:  91%|█████████ | 932/1023 [01:04<00:06, 14.18it/s]Part 1/2. Reading and checking clips:  91%|█████████▏| 936/1023 [01:05<00:04, 18.35it/s]Part 1/2. Reading and checking clips:  92%|█████████▏| 938/1023 [01:05<00:05, 16.44it/s]Part 1/2. Reading and checking clips:  92%|█████████▏| 940/1023 [01:05<00:05, 14.91it/s]Part 1/2. Reading and checking clips:  92%|█████████▏| 942/1023 [01:05<00:05, 13.79it/s]Part 1/2. Reading and checking clips:  92%|█████████▏| 944/1023 [01:05<00:06, 13.06it/s]Part 1/2. Reading and checking clips:  93%|█████████▎| 947/1023 [01:05<00:05, 14.55it/s]Part 1/2. Reading and checking clips:  93%|█████████▎| 949/1023 [01:06<00:05, 12.93it/s]Part 1/2. Reading and checking clips:  93%|█████████▎| 952/1023 [01:06<00:04, 16.14it/s]Part 1/2. Reading and checking clips:  93%|█████████▎| 955/1023 [01:06<00:03, 17.76it/s]Part 1/2. Reading and checking clips:  94%|█████████▎| 957/1023 [01:06<00:04, 16.09it/s]Part 1/2. Reading and checking clips:  94%|█████████▎| 959/1023 [01:06<00:03, 16.43it/s]Part 1/2. Reading and checking clips:  94%|█████████▍| 961/1023 [01:06<00:03, 16.04it/s]Part 1/2. Reading and checking clips:  94%|█████████▍| 963/1023 [01:06<00:04, 14.57it/s]Part 1/2. Reading and checking clips:  94%|█████████▍| 965/1023 [01:07<00:04, 13.32it/s]Part 1/2. Reading and checking clips:  95%|█████████▍| 967/1023 [01:07<00:04, 12.83it/s]Part 1/2. Reading and checking clips:  95%|█████████▍| 969/1023 [01:07<00:03, 13.68it/s]Part 1/2. Reading and checking clips:  95%|█████████▍| 971/1023 [01:07<00:04, 12.94it/s]Part 1/2. Reading and checking clips:  95%|█████████▌| 973/1023 [01:07<00:03, 13.33it/s]Part 1/2. Reading and checking clips:  95%|█████████▌| 975/1023 [01:07<00:03, 13.46it/s]Part 1/2. Reading and checking clips:  96%|█████████▌| 977/1023 [01:08<00:03, 13.03it/s]Part 1/2. Reading and checking clips:  96%|█████████▌| 979/1023 [01:08<00:03, 12.11it/s]Part 1/2. Reading and checking clips:  96%|█████████▌| 981/1023 [01:08<00:03, 12.32it/s]Part 1/2. Reading and checking clips:  96%|█████████▌| 983/1023 [01:08<00:03, 13.29it/s]Part 1/2. Reading and checking clips:  96%|█████████▋| 986/1023 [01:08<00:02, 14.40it/s]Part 1/2. Reading and checking clips:  97%|█████████▋| 988/1023 [01:08<00:02, 14.12it/s]Part 1/2. Reading and checking clips:  97%|█████████▋| 990/1023 [01:09<00:02, 14.02it/s]Part 1/2. Reading and checking clips:  97%|█████████▋| 992/1023 [01:09<00:02, 14.52it/s]Part 1/2. Reading and checking clips:  97%|█████████▋| 994/1023 [01:09<00:02, 13.51it/s]Part 1/2. Reading and checking clips:  97%|█████████▋| 996/1023 [01:09<00:02, 12.67it/s]Part 1/2. Reading and checking clips:  98%|█████████▊| 998/1023 [01:09<00:02, 11.94it/s]Part 1/2. Reading and checking clips:  98%|█████████▊| 1000/1023 [01:09<00:01, 12.31it/s]Part 1/2. Reading and checking clips:  98%|█████████▊| 1002/1023 [01:10<00:01, 12.31it/s]Part 1/2. Reading and checking clips:  98%|█████████▊| 1004/1023 [01:10<00:01, 13.78it/s]Part 1/2. Reading and checking clips:  98%|█████████▊| 1006/1023 [01:10<00:01, 13.52it/s]Part 1/2. Reading and checking clips:  99%|█████████▊| 1008/1023 [01:10<00:01, 14.43it/s]Part 1/2. Reading and checking clips:  99%|█████████▊| 1010/1023 [01:10<00:00, 14.85it/s]Part 1/2. Reading and checking clips:  99%|█████████▉| 1012/1023 [01:10<00:00, 14.61it/s]Part 1/2. Reading and checking clips:  99%|█████████▉| 1014/1023 [01:10<00:00, 13.02it/s]Part 1/2. Reading and checking clips:  99%|█████████▉| 1016/1023 [01:11<00:00, 12.99it/s]Part 1/2. Reading and checking clips: 100%|█████████▉| 1019/1023 [01:11<00:00, 14.20it/s]Part 1/2. Reading and checking clips: 100%|█████████▉| 1021/1023 [01:11<00:00, 14.15it/s]Part 1/2. Reading and checking clips: 100%|██████████| 1023/1023 [01:11<00:00, 13.86it/s]Part 1/2. Reading and checking clips: 100%|██████████| 1023/1023 [01:11<00:00, 14.31it/s]
+Part 2/2. Preparing views:   0%|          | 0/1023 [00:00<?, ?it/s]Part 2/2. Preparing views:   3%|▎         | 29/1023 [00:00<00:06, 148.41it/s]Part 2/2. Preparing views:  16%|█▌        | 163/1023 [00:00<00:01, 649.50it/s]Part 2/2. Preparing views:  24%|██▍       | 248/1023 [00:00<00:01, 491.54it/s]Part 2/2. Preparing views:  37%|███▋      | 381/1023 [00:00<00:01, 498.14it/s]Part 2/2. Preparing views:  49%|████▉     | 499/1023 [00:00<00:00, 640.91it/s]Part 2/2. Preparing views:  57%|█████▋    | 587/1023 [00:01<00:00, 493.16it/s]Part 2/2. Preparing views:  70%|██████▉   | 716/1023 [00:01<00:00, 643.74it/s]Part 2/2. Preparing views:  83%|████████▎ | 845/1023 [00:01<00:00, 780.67it/s]Part 2/2. Preparing views:  92%|█████████▏| 944/1023 [00:01<00:00, 530.70it/s]Part 2/2. Preparing views: 100%|██████████| 1023/1023 [00:01<00:00, 576.08it/s]
+
+
+===
+[validation] | COUNT safe: 144542
+COUNT risk: 86244
+===
+Number of the class = 2
+Part 1/2. Reading and checking clips:   0%|          | 0/1023 [00:00<?, ?it/s]Part 1/2. Reading and checking clips:   0%|          | 3/1023 [00:00<00:50, 20.39it/s]Part 1/2. Reading and checking clips:   1%|          | 11/1023 [00:00<00:21, 47.25it/s]Part 1/2. Reading and checking clips:   2%|▏         | 19/1023 [00:00<00:17, 57.96it/s]Part 1/2. Reading and checking clips:   3%|▎         | 26/1023 [00:00<00:20, 48.86it/s]Part 1/2. Reading and checking clips:   3%|▎         | 32/1023 [00:00<00:28, 34.55it/s]Part 1/2. Reading and checking clips:   4%|▎         | 37/1023 [00:00<00:30, 32.64it/s]Part 1/2. Reading and checking clips:   4%|▍         | 41/1023 [00:01<00:35, 27.57it/s]Part 1/2. Reading and checking clips:   4%|▍         | 45/1023 [00:01<00:35, 27.62it/s]Part 1/2. Reading and checking clips:   5%|▌         | 52/1023 [00:01<00:27, 35.96it/s]Part 1/2. Reading and checking clips:   6%|▌         | 57/1023 [00:01<00:27, 35.06it/s]Part 1/2. Reading and checking clips:   6%|▌         | 61/1023 [00:01<00:28, 33.87it/s]Part 1/2. Reading and checking clips:   6%|▋         | 65/1023 [00:01<00:31, 30.42it/s]Part 1/2. Reading and checking clips:   7%|▋         | 69/1023 [00:02<00:30, 31.05it/s]Part 1/2. Reading and checking clips:   7%|▋         | 76/1023 [00:02<00:23, 39.77it/s]Part 1/2. Reading and checking clips:   8%|▊         | 84/1023 [00:02<00:19, 48.84it/s]Part 1/2. Reading and checking clips:   9%|▉         | 92/1023 [00:02<00:16, 56.38it/s]Part 1/2. Reading and checking clips:  10%|▉         | 100/1023 [00:02<00:15, 60.61it/s]Part 1/2. Reading and checking clips:  10%|█         | 107/1023 [00:02<00:19, 47.02it/s]Part 1/2. Reading and checking clips:  11%|█         | 113/1023 [00:02<00:20, 44.16it/s]Part 1/2. Reading and checking clips:  12%|█▏        | 120/1023 [00:03<00:21, 42.63it/s]Part 1/2. Reading and checking clips:  12%|█▏        | 125/1023 [00:03<00:22, 39.14it/s]Part 1/2. Reading and checking clips:  13%|█▎        | 130/1023 [00:03<00:26, 33.76it/s]Part 1/2. Reading and checking clips:  13%|█▎        | 137/1023 [00:03<00:21, 40.64it/s]Part 1/2. Reading and checking clips:  14%|█▍        | 145/1023 [00:03<00:20, 43.50it/s]Part 1/2. Reading and checking clips:  15%|█▍        | 150/1023 [00:03<00:24, 35.80it/s]Part 1/2. Reading and checking clips:  15%|█▌        | 154/1023 [00:04<00:26, 32.62it/s]Part 1/2. Reading and checking clips:  15%|█▌        | 158/1023 [00:04<00:25, 33.53it/s]Part 1/2. Reading and checking clips:  16%|█▌        | 163/1023 [00:04<00:23, 36.81it/s]Part 1/2. Reading and checking clips:  16%|█▋        | 167/1023 [00:04<00:24, 35.56it/s]Part 1/2. Reading and checking clips:  17%|█▋        | 171/1023 [00:04<00:24, 34.96it/s]Part 1/2. Reading and checking clips:  17%|█▋        | 176/1023 [00:04<00:22, 37.55it/s]Part 1/2. Reading and checking clips:  18%|█▊        | 181/1023 [00:04<00:21, 39.36it/s]Part 1/2. Reading and checking clips:  18%|█▊        | 186/1023 [00:04<00:21, 38.34it/s]Part 1/2. Reading and checking clips:  19%|█▊        | 191/1023 [00:04<00:21, 37.87it/s]Part 1/2. Reading and checking clips:  19%|█▉        | 195/1023 [00:05<00:22, 37.30it/s]Part 1/2. Reading and checking clips:  20%|█▉        | 203/1023 [00:05<00:17, 47.98it/s]Part 1/2. Reading and checking clips:  20%|██        | 208/1023 [00:05<00:20, 39.49it/s]Part 1/2. Reading and checking clips:  21%|██        | 213/1023 [00:05<00:27, 29.52it/s]Part 1/2. Reading and checking clips:  21%|██        | 217/1023 [00:05<00:28, 28.64it/s]Part 1/2. Reading and checking clips:  22%|██▏       | 221/1023 [00:05<00:27, 28.80it/s]Part 1/2. Reading and checking clips:  22%|██▏       | 227/1023 [00:06<00:26, 30.42it/s]Part 1/2. Reading and checking clips:  23%|██▎       | 235/1023 [00:06<00:22, 35.63it/s]Part 1/2. Reading and checking clips:  23%|██▎       | 239/1023 [00:06<00:25, 30.83it/s]Part 1/2. Reading and checking clips:  24%|██▍       | 244/1023 [00:06<00:24, 32.06it/s]Part 1/2. Reading and checking clips:  24%|██▍       | 250/1023 [00:06<00:20, 37.04it/s]Part 1/2. Reading and checking clips:  25%|██▍       | 254/1023 [00:06<00:24, 31.15it/s]Part 1/2. Reading and checking clips:  25%|██▌       | 260/1023 [00:07<00:21, 35.86it/s]Part 1/2. Reading and checking clips:  26%|██▌       | 264/1023 [00:07<00:21, 35.12it/s]Part 1/2. Reading and checking clips:  26%|██▌       | 268/1023 [00:07<00:26, 28.43it/s]Part 1/2. Reading and checking clips:  27%|██▋       | 272/1023 [00:07<00:24, 30.29it/s]Part 1/2. Reading and checking clips:  27%|██▋       | 276/1023 [00:07<00:27, 27.43it/s]Part 1/2. Reading and checking clips:  27%|██▋       | 279/1023 [00:07<00:27, 26.90it/s]Part 1/2. Reading and checking clips:  28%|██▊       | 282/1023 [00:07<00:30, 24.42it/s]Part 1/2. Reading and checking clips:  28%|██▊       | 287/1023 [00:08<00:25, 28.54it/s]Part 1/2. Reading and checking clips:  29%|██▊       | 292/1023 [00:08<00:22, 32.40it/s]Part 1/2. Reading and checking clips:  29%|██▉       | 297/1023 [00:08<00:20, 36.29it/s]Part 1/2. Reading and checking clips:  29%|██▉       | 301/1023 [00:08<00:20, 34.78it/s]Part 1/2. Reading and checking clips:  30%|██▉       | 305/1023 [00:08<00:23, 31.10it/s]Part 1/2. Reading and checking clips:  30%|███       | 311/1023 [00:08<00:19, 36.95it/s]Part 1/2. Reading and checking clips:  31%|███       | 316/1023 [00:08<00:18, 37.86it/s]Part 1/2. Reading and checking clips:  31%|███▏      | 320/1023 [00:08<00:21, 33.11it/s]Part 1/2. Reading and checking clips:  32%|███▏      | 324/1023 [00:09<00:24, 28.24it/s]Part 1/2. Reading and checking clips:  32%|███▏      | 330/1023 [00:09<00:20, 34.39it/s]Part 1/2. Reading and checking clips:  33%|███▎      | 335/1023 [00:09<00:18, 37.35it/s]Part 1/2. Reading and checking clips:  33%|███▎      | 342/1023 [00:09<00:15, 44.66it/s]Part 1/2. Reading and checking clips:  34%|███▍      | 347/1023 [00:09<00:17, 37.88it/s]Part 1/2. Reading and checking clips:  35%|███▍      | 353/1023 [00:09<00:15, 42.05it/s]Part 1/2. Reading and checking clips:  35%|███▍      | 358/1023 [00:10<00:20, 32.23it/s]Part 1/2. Reading and checking clips:  35%|███▌      | 363/1023 [00:10<00:18, 35.29it/s]Part 1/2. Reading and checking clips:  36%|███▌      | 368/1023 [00:10<00:19, 33.03it/s]Part 1/2. Reading and checking clips:  36%|███▋      | 373/1023 [00:10<00:20, 31.36it/s]Part 1/2. Reading and checking clips:  37%|███▋      | 377/1023 [00:10<00:24, 26.07it/s]Part 1/2. Reading and checking clips:  38%|███▊      | 385/1023 [00:10<00:20, 31.14it/s]Part 1/2. Reading and checking clips:  38%|███▊      | 389/1023 [00:11<00:20, 30.57it/s]Part 1/2. Reading and checking clips:  39%|███▊      | 394/1023 [00:11<00:18, 33.74it/s]Part 1/2. Reading and checking clips:  39%|███▉      | 401/1023 [00:11<00:15, 40.96it/s]Part 1/2. Reading and checking clips:  40%|███▉      | 406/1023 [00:11<00:15, 39.33it/s]Part 1/2. Reading and checking clips:  40%|████      | 413/1023 [00:11<00:13, 45.93it/s]Part 1/2. Reading and checking clips:  41%|████      | 418/1023 [00:11<00:13, 46.15it/s]Part 1/2. Reading and checking clips:  41%|████▏     | 423/1023 [00:11<00:16, 35.80it/s]Part 1/2. Reading and checking clips:  42%|████▏     | 429/1023 [00:11<00:14, 40.06it/s]Part 1/2. Reading and checking clips:  42%|████▏     | 434/1023 [00:12<00:18, 32.57it/s]Part 1/2. Reading and checking clips:  43%|████▎     | 441/1023 [00:12<00:16, 35.42it/s]Part 1/2. Reading and checking clips:  44%|████▎     | 447/1023 [00:12<00:15, 37.10it/s]Part 1/2. Reading and checking clips:  44%|████▍     | 453/1023 [00:12<00:15, 37.17it/s]Part 1/2. Reading and checking clips:  45%|████▍     | 457/1023 [00:12<00:15, 37.70it/s]Part 1/2. Reading and checking clips:  45%|████▌     | 461/1023 [00:12<00:18, 30.51it/s]Part 1/2. Reading and checking clips:  45%|████▌     | 465/1023 [00:13<00:17, 31.75it/s]Part 1/2. Reading and checking clips:  46%|████▌     | 469/1023 [00:13<00:19, 27.83it/s]Part 1/2. Reading and checking clips:  47%|████▋     | 477/1023 [00:13<00:14, 38.66it/s]Part 1/2. Reading and checking clips:  47%|████▋     | 482/1023 [00:13<00:14, 36.60it/s]Part 1/2. Reading and checking clips:  48%|████▊     | 487/1023 [00:13<00:13, 39.07it/s]Part 1/2. Reading and checking clips:  48%|████▊     | 492/1023 [00:13<00:13, 39.13it/s]Part 1/2. Reading and checking clips:  49%|████▊     | 498/1023 [00:13<00:12, 42.75it/s]Part 1/2. Reading and checking clips:  49%|████▉     | 503/1023 [00:14<00:13, 39.93it/s]Part 1/2. Reading and checking clips:  50%|████▉     | 510/1023 [00:14<00:10, 47.23it/s]Part 1/2. Reading and checking clips:  50%|█████     | 516/1023 [00:14<00:11, 44.07it/s]Part 1/2. Reading and checking clips:  51%|█████     | 521/1023 [00:14<00:13, 36.04it/s]Part 1/2. Reading and checking clips:  51%|█████▏    | 525/1023 [00:14<00:18, 27.53it/s]Part 1/2. Reading and checking clips:  52%|█████▏    | 531/1023 [00:14<00:14, 33.54it/s]Part 1/2. Reading and checking clips:  52%|█████▏    | 536/1023 [00:15<00:13, 35.06it/s]Part 1/2. Reading and checking clips:  53%|█████▎    | 542/1023 [00:15<00:11, 40.56it/s]Part 1/2. Reading and checking clips:  53%|█████▎    | 547/1023 [00:15<00:13, 34.60it/s]Part 1/2. Reading and checking clips:  54%|█████▍    | 552/1023 [00:15<00:12, 37.46it/s]Part 1/2. Reading and checking clips:  54%|█████▍    | 557/1023 [00:15<00:12, 36.37it/s]Part 1/2. Reading and checking clips:  55%|█████▌    | 563/1023 [00:15<00:10, 41.83it/s]Part 1/2. Reading and checking clips:  56%|█████▌    | 568/1023 [00:15<00:11, 38.94it/s]Part 1/2. Reading and checking clips:  56%|█████▌    | 573/1023 [00:15<00:12, 36.10it/s]Part 1/2. Reading and checking clips:  56%|█████▋    | 577/1023 [00:16<00:14, 30.88it/s]Part 1/2. Reading and checking clips:  57%|█████▋    | 581/1023 [00:16<00:14, 31.17it/s]Part 1/2. Reading and checking clips:  57%|█████▋    | 585/1023 [00:16<00:13, 32.07it/s]Part 1/2. Reading and checking clips:  58%|█████▊    | 592/1023 [00:16<00:10, 40.09it/s]Part 1/2. Reading and checking clips:  58%|█████▊    | 598/1023 [00:16<00:10, 40.79it/s]Part 1/2. Reading and checking clips:  59%|█████▉    | 605/1023 [00:16<00:10, 40.05it/s]Part 1/2. Reading and checking clips:  60%|█████▉    | 612/1023 [00:16<00:09, 45.54it/s]Part 1/2. Reading and checking clips:  60%|██████    | 618/1023 [00:17<00:09, 41.71it/s]Part 1/2. Reading and checking clips:  61%|██████    | 623/1023 [00:17<00:09, 42.29it/s]Part 1/2. Reading and checking clips:  62%|██████▏   | 632/1023 [00:17<00:08, 45.25it/s]Part 1/2. Reading and checking clips:  62%|██████▏   | 637/1023 [00:17<00:09, 42.54it/s]Part 1/2. Reading and checking clips:  63%|██████▎   | 642/1023 [00:17<00:09, 39.62it/s]Part 1/2. Reading and checking clips:  63%|██████▎   | 646/1023 [00:17<00:09, 39.43it/s]Part 1/2. Reading and checking clips:  64%|██████▎   | 650/1023 [00:17<00:10, 35.89it/s]Part 1/2. Reading and checking clips:  64%|██████▍   | 657/1023 [00:18<00:09, 39.69it/s]Part 1/2. Reading and checking clips:  65%|██████▍   | 661/1023 [00:18<00:09, 37.70it/s]Part 1/2. Reading and checking clips:  65%|██████▌   | 669/1023 [00:18<00:07, 47.19it/s]Part 1/2. Reading and checking clips:  66%|██████▌   | 677/1023 [00:18<00:06, 54.88it/s]Part 1/2. Reading and checking clips:  67%|██████▋   | 683/1023 [00:18<00:06, 49.42it/s]Part 1/2. Reading and checking clips:  67%|██████▋   | 689/1023 [00:18<00:07, 47.53it/s]Part 1/2. Reading and checking clips:  68%|██████▊   | 697/1023 [00:18<00:05, 54.79it/s]Part 1/2. Reading and checking clips:  69%|██████▉   | 705/1023 [00:18<00:05, 60.26it/s]Part 1/2. Reading and checking clips:  70%|██████▉   | 712/1023 [00:19<00:05, 54.53it/s]Part 1/2. Reading and checking clips:  70%|███████   | 718/1023 [00:19<00:05, 51.63it/s]Part 1/2. Reading and checking clips:  71%|███████   | 725/1023 [00:19<00:05, 55.31it/s]Part 1/2. Reading and checking clips:  71%|███████▏  | 731/1023 [00:19<00:06, 45.78it/s]Part 1/2. Reading and checking clips:  72%|███████▏  | 736/1023 [00:19<00:06, 42.72it/s]Part 1/2. Reading and checking clips:  72%|███████▏  | 741/1023 [00:19<00:07, 39.72it/s]Part 1/2. Reading and checking clips:  73%|███████▎  | 748/1023 [00:19<00:05, 46.22it/s]Part 1/2. Reading and checking clips:  74%|███████▎  | 753/1023 [00:20<00:06, 43.46it/s]Part 1/2. Reading and checking clips:  74%|███████▍  | 758/1023 [00:20<00:06, 40.30it/s]Part 1/2. Reading and checking clips:  75%|███████▍  | 763/1023 [00:20<00:06, 38.26it/s]Part 1/2. Reading and checking clips:  75%|███████▌  | 770/1023 [00:20<00:05, 44.15it/s]Part 1/2. Reading and checking clips:  76%|███████▌  | 777/1023 [00:20<00:04, 49.96it/s]Part 1/2. Reading and checking clips:  77%|███████▋  | 783/1023 [00:20<00:05, 44.90it/s]Part 1/2. Reading and checking clips:  77%|███████▋  | 788/1023 [00:20<00:05, 40.93it/s]Part 1/2. Reading and checking clips:  78%|███████▊  | 793/1023 [00:21<00:05, 39.69it/s]Part 1/2. Reading and checking clips:  78%|███████▊  | 798/1023 [00:21<00:05, 39.88it/s]Part 1/2. Reading and checking clips:  79%|███████▊  | 805/1023 [00:21<00:04, 45.48it/s]Part 1/2. Reading and checking clips:  79%|███████▉  | 813/1023 [00:21<00:03, 52.93it/s]Part 1/2. Reading and checking clips:  80%|████████  | 819/1023 [00:21<00:04, 48.16it/s]Part 1/2. Reading and checking clips:  81%|████████  | 827/1023 [00:21<00:03, 55.33it/s]Part 1/2. Reading and checking clips:  81%|████████▏ | 833/1023 [00:21<00:03, 50.54it/s]Part 1/2. Reading and checking clips:  82%|████████▏ | 841/1023 [00:21<00:03, 56.28it/s]Part 1/2. Reading and checking clips:  83%|████████▎ | 847/1023 [00:21<00:03, 55.41it/s]Part 1/2. Reading and checking clips:  83%|████████▎ | 853/1023 [00:22<00:03, 52.59it/s]Part 1/2. Reading and checking clips:  84%|████████▍ | 861/1023 [00:22<00:03, 49.16it/s]Part 1/2. Reading and checking clips:  85%|████████▍ | 867/1023 [00:22<00:03, 47.14it/s]Part 1/2. Reading and checking clips:  85%|████████▌ | 873/1023 [00:22<00:03, 44.60it/s]Part 1/2. Reading and checking clips:  86%|████████▌ | 880/1023 [00:22<00:02, 49.48it/s]Part 1/2. Reading and checking clips:  87%|████████▋ | 888/1023 [00:22<00:02, 56.00it/s]Part 1/2. Reading and checking clips:  87%|████████▋ | 895/1023 [00:22<00:02, 59.24it/s]Part 1/2. Reading and checking clips:  88%|████████▊ | 903/1023 [00:23<00:01, 63.43it/s]Part 1/2. Reading and checking clips:  89%|████████▉ | 910/1023 [00:23<00:01, 57.73it/s]Part 1/2. Reading and checking clips:  90%|████████▉ | 916/1023 [00:23<00:02, 46.73it/s]Part 1/2. Reading and checking clips:  90%|█████████ | 923/1023 [00:23<00:02, 48.80it/s]Part 1/2. Reading and checking clips:  91%|█████████ | 929/1023 [00:23<00:02, 44.55it/s]Part 1/2. Reading and checking clips:  92%|█████████▏| 938/1023 [00:23<00:01, 52.98it/s]Part 1/2. Reading and checking clips:  92%|█████████▏| 945/1023 [00:23<00:01, 56.47it/s]Part 1/2. Reading and checking clips:  93%|█████████▎| 952/1023 [00:23<00:01, 59.69it/s]Part 1/2. Reading and checking clips:  94%|█████████▎| 959/1023 [00:24<00:01, 53.68it/s]Part 1/2. Reading and checking clips:  94%|█████████▍| 966/1023 [00:24<00:00, 57.30it/s]Part 1/2. Reading and checking clips:  95%|█████████▌| 973/1023 [00:24<00:00, 60.51it/s]Part 1/2. Reading and checking clips:  96%|█████████▌| 980/1023 [00:24<00:00, 62.98it/s]Part 1/2. Reading and checking clips:  96%|█████████▋| 987/1023 [00:24<00:00, 58.81it/s]Part 1/2. Reading and checking clips:  97%|█████████▋| 994/1023 [00:24<00:00, 61.65it/s]Part 1/2. Reading and checking clips:  98%|█████████▊| 1001/1023 [00:24<00:00, 56.67it/s]Part 1/2. Reading and checking clips:  98%|█████████▊| 1007/1023 [00:24<00:00, 49.68it/s]Part 1/2. Reading and checking clips:  99%|█████████▉| 1015/1023 [00:25<00:00, 55.70it/s]Part 1/2. Reading and checking clips: 100%|█████████▉| 1022/1023 [00:25<00:00, 58.53it/s]Part 1/2. Reading and checking clips: 100%|██████████| 1023/1023 [00:25<00:00, 40.56it/s]
+Part 2/2. Preparing views:   0%|          | 0/1023 [00:00<?, ?it/s]Part 2/2. Preparing views:  13%|█▎        | 134/1023 [00:00<00:00, 1339.87it/s]Part 2/2. Preparing views:  26%|██▌       | 268/1023 [00:00<00:01, 434.69it/s] Part 2/2. Preparing views:  40%|████      | 411/1023 [00:00<00:00, 647.47it/s]Part 2/2. Preparing views:  53%|█████▎    | 540/1023 [00:00<00:00, 797.57it/s]Part 2/2. Preparing views:  64%|██████▍   | 655/1023 [00:01<00:00, 489.42it/s]Part 2/2. Preparing views:  76%|███████▌  | 778/1023 [00:01<00:00, 611.41it/s]Part 2/2. Preparing views:  89%|████████▉ | 912/1023 [00:01<00:00, 749.77it/s]Part 2/2. Preparing views: 100%|██████████| 1023/1023 [00:01<00:00, 694.00it/s]
+
+
+===
+[test] | COUNT safe: 144542
+COUNT risk: 86244
+===
+Number of the class = 2
+dset lengths: train <not used>, val <not used>
+4
+Use joint position embedding
+Droppath rate: [0.0, 0.00909090880304575, 0.0181818176060915, 0.027272727340459824, 0.036363635212183, 0.045454543083906174, 0.054545458406209946, 0.06363636255264282, 0.0727272778749466, 0.08181818574666977, 0.09090909361839294, 0.10000000149011612]
+Checkpoint list: [False, False, False, False, False, False, False, False, False, False, False, False]
+Init pos_embed from sincos pos_embed
+Patch size = (14, 14)
+/gpfs/home1/sorlova/repos/AITHENA/NewStage/VideoMAE/iv2_sm_run_frame_finetuning.py:458: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(args.finetune, map_location='cpu')
+Load ckpt from logs/baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3/checkpoint-6.pth
+Temporal interpolate from 8 to 16
+Model = InternVideo2(
+  (patch_embed): PatchEmbed(
+    (proj): Conv3d(3, 384, kernel_size=(1, 14, 14), stride=(1, 14, 14))
+    (norm): Identity()
+  )
+  (blocks): ModuleList(
+    (0): Block(
+      (norm1): DropoutAddRMSNorm()
+      (attn): Attention(
+        (qkv): Linear(in_features=384, out_features=1152, bias=False)
+        (attn_drop): Dropout(p=0.0, inplace=False)
+        (proj): Linear(in_features=384, out_features=384, bias=True)
+        (proj_drop): Dropout(p=0.0, inplace=False)
+        (inner_attn): FlashAttention()
+        (q_norm): DropoutAddRMSNorm()
+        (k_norm): DropoutAddRMSNorm()
+      )
+      (ls1): LayerScale()
+      (drop_path1): Identity()
+      (norm2): DropoutAddRMSNorm()
+      (mlp): FusedMLP(
+        (fc1): Linear(in_features=384, out_features=1536, bias=True)
+        (fc2): Linear(in_features=1536, out_features=384, bias=True)
+      )
+      (ls2): LayerScale()
+      (drop_path2): Identity()
+    )
+    (1-11): 11 x Block(
+      (norm1): DropoutAddRMSNorm()
+      (attn): Attention(
+        (qkv): Linear(in_features=384, out_features=1152, bias=False)
+        (attn_drop): Dropout(p=0.0, inplace=False)
+        (proj): Linear(in_features=384, out_features=384, bias=True)
+        (proj_drop): Dropout(p=0.0, inplace=False)
+        (inner_attn): FlashAttention()
+        (q_norm): DropoutAddRMSNorm()
+        (k_norm): DropoutAddRMSNorm()
+      )
+      (ls1): LayerScale()
+      (drop_path1): DropPath()
+      (norm2): DropoutAddRMSNorm()
+      (mlp): FusedMLP(
+        (fc1): Linear(in_features=384, out_features=1536, bias=True)
+        (fc2): Linear(in_features=1536, out_features=384, bias=True)
+      )
+      (ls2): LayerScale()
+      (drop_path2): DropPath()
+    )
+  )
+  (clip_projector): AttentionPoolingBlock(
+    (norm1_q): LayerNorm((384,), eps=1e-05, elementwise_affine=True)
+    (norm1_k): LayerNorm((384,), eps=1e-05, elementwise_affine=True)
+    (norm1_v): LayerNorm((384,), eps=1e-05, elementwise_affine=True)
+    (cross_attn): CrossAttention(
+      (q): Linear(in_features=384, out_features=384, bias=False)
+      (k): Linear(in_features=384, out_features=384, bias=False)
+      (v): Linear(in_features=384, out_features=384, bias=False)
+      (attn_drop): Dropout(p=0.0, inplace=False)
+      (proj): Linear(in_features=384, out_features=768, bias=True)
+      (proj_drop): Dropout(p=0.0, inplace=False)
+    )
+    (drop_path): Identity()
+  )
+  (fc_norm): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+  (fc_dropout): Identity()
+  (head): Linear(in_features=768, out_features=2, bias=True)
+)
+number of params: 23833346
+Assigned values = [0.023757264018058777, 0.03167635202407837, 0.04223513603210449, 0.056313514709472656, 0.07508468627929688, 0.1001129150390625, 0.13348388671875, 0.177978515625, 0.2373046875, 0.31640625, 0.421875, 0.5625, 0.75, 1.0]
+Skip weight decay list:  {'cls_token', 'pos_embed_cls', 'pos_embed_temporal', 'pos_embed_spatial', 'pos_embed'}
+Param groups = {
+  "layer_0_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "cls_token",
+      "pos_embed",
+      "patch_embed.proj.bias"
+    ],
+    "lr_scale": 0.023757264018058777
+  },
+  "layer_0_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "patch_embed.proj.weight"
+    ],
+    "lr_scale": 0.023757264018058777
+  },
+  "layer_1_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.0.norm1.weight",
+      "blocks.0.attn.proj.bias",
+      "blocks.0.attn.q_norm.weight",
+      "blocks.0.attn.k_norm.weight",
+      "blocks.0.ls1.gamma",
+      "blocks.0.norm2.weight",
+      "blocks.0.mlp.fc1.bias",
+      "blocks.0.mlp.fc2.bias",
+      "blocks.0.ls2.gamma"
+    ],
+    "lr_scale": 0.03167635202407837
+  },
+  "layer_1_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.0.attn.qkv.weight",
+      "blocks.0.attn.proj.weight",
+      "blocks.0.mlp.fc1.weight",
+      "blocks.0.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.03167635202407837
+  },
+  "layer_2_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.1.norm1.weight",
+      "blocks.1.attn.proj.bias",
+      "blocks.1.attn.q_norm.weight",
+      "blocks.1.attn.k_norm.weight",
+      "blocks.1.ls1.gamma",
+      "blocks.1.norm2.weight",
+      "blocks.1.mlp.fc1.bias",
+      "blocks.1.mlp.fc2.bias",
+      "blocks.1.ls2.gamma"
+    ],
+    "lr_scale": 0.04223513603210449
+  },
+  "layer_2_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.1.attn.qkv.weight",
+      "blocks.1.attn.proj.weight",
+      "blocks.1.mlp.fc1.weight",
+      "blocks.1.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.04223513603210449
+  },
+  "layer_3_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.2.norm1.weight",
+      "blocks.2.attn.proj.bias",
+      "blocks.2.attn.q_norm.weight",
+      "blocks.2.attn.k_norm.weight",
+      "blocks.2.ls1.gamma",
+      "blocks.2.norm2.weight",
+      "blocks.2.mlp.fc1.bias",
+      "blocks.2.mlp.fc2.bias",
+      "blocks.2.ls2.gamma"
+    ],
+    "lr_scale": 0.056313514709472656
+  },
+  "layer_3_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.2.attn.qkv.weight",
+      "blocks.2.attn.proj.weight",
+      "blocks.2.mlp.fc1.weight",
+      "blocks.2.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.056313514709472656
+  },
+  "layer_4_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.3.norm1.weight",
+      "blocks.3.attn.proj.bias",
+      "blocks.3.attn.q_norm.weight",
+      "blocks.3.attn.k_norm.weight",
+      "blocks.3.ls1.gamma",
+      "blocks.3.norm2.weight",
+      "blocks.3.mlp.fc1.bias",
+      "blocks.3.mlp.fc2.bias",
+      "blocks.3.ls2.gamma"
+    ],
+    "lr_scale": 0.07508468627929688
+  },
+  "layer_4_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.3.attn.qkv.weight",
+      "blocks.3.attn.proj.weight",
+      "blocks.3.mlp.fc1.weight",
+      "blocks.3.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.07508468627929688
+  },
+  "layer_5_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.4.norm1.weight",
+      "blocks.4.attn.proj.bias",
+      "blocks.4.attn.q_norm.weight",
+      "blocks.4.attn.k_norm.weight",
+      "blocks.4.ls1.gamma",
+      "blocks.4.norm2.weight",
+      "blocks.4.mlp.fc1.bias",
+      "blocks.4.mlp.fc2.bias",
+      "blocks.4.ls2.gamma"
+    ],
+    "lr_scale": 0.1001129150390625
+  },
+  "layer_5_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.4.attn.qkv.weight",
+      "blocks.4.attn.proj.weight",
+      "blocks.4.mlp.fc1.weight",
+      "blocks.4.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.1001129150390625
+  },
+  "layer_6_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.5.norm1.weight",
+      "blocks.5.attn.proj.bias",
+      "blocks.5.attn.q_norm.weight",
+      "blocks.5.attn.k_norm.weight",
+      "blocks.5.ls1.gamma",
+      "blocks.5.norm2.weight",
+      "blocks.5.mlp.fc1.bias",
+      "blocks.5.mlp.fc2.bias",
+      "blocks.5.ls2.gamma"
+    ],
+    "lr_scale": 0.13348388671875
+  },
+  "layer_6_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.5.attn.qkv.weight",
+      "blocks.5.attn.proj.weight",
+      "blocks.5.mlp.fc1.weight",
+      "blocks.5.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.13348388671875
+  },
+  "layer_7_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.6.norm1.weight",
+      "blocks.6.attn.proj.bias",
+      "blocks.6.attn.q_norm.weight",
+      "blocks.6.attn.k_norm.weight",
+      "blocks.6.ls1.gamma",
+      "blocks.6.norm2.weight",
+      "blocks.6.mlp.fc1.bias",
+      "blocks.6.mlp.fc2.bias",
+      "blocks.6.ls2.gamma"
+    ],
+    "lr_scale": 0.177978515625
+  },
+  "layer_7_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.6.attn.qkv.weight",
+      "blocks.6.attn.proj.weight",
+      "blocks.6.mlp.fc1.weight",
+      "blocks.6.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.177978515625
+  },
+  "layer_8_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.7.norm1.weight",
+      "blocks.7.attn.proj.bias",
+      "blocks.7.attn.q_norm.weight",
+      "blocks.7.attn.k_norm.weight",
+      "blocks.7.ls1.gamma",
+      "blocks.7.norm2.weight",
+      "blocks.7.mlp.fc1.bias",
+      "blocks.7.mlp.fc2.bias",
+      "blocks.7.ls2.gamma"
+    ],
+    "lr_scale": 0.2373046875
+  },
+  "layer_8_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.7.attn.qkv.weight",
+      "blocks.7.attn.proj.weight",
+      "blocks.7.mlp.fc1.weight",
+      "blocks.7.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.2373046875
+  },
+  "layer_9_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.8.norm1.weight",
+      "blocks.8.attn.proj.bias",
+      "blocks.8.attn.q_norm.weight",
+      "blocks.8.attn.k_norm.weight",
+      "blocks.8.ls1.gamma",
+      "blocks.8.norm2.weight",
+      "blocks.8.mlp.fc1.bias",
+      "blocks.8.mlp.fc2.bias",
+      "blocks.8.ls2.gamma"
+    ],
+    "lr_scale": 0.31640625
+  },
+  "layer_9_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.8.attn.qkv.weight",
+      "blocks.8.attn.proj.weight",
+      "blocks.8.mlp.fc1.weight",
+      "blocks.8.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.31640625
+  },
+  "layer_10_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.9.norm1.weight",
+      "blocks.9.attn.proj.bias",
+      "blocks.9.attn.q_norm.weight",
+      "blocks.9.attn.k_norm.weight",
+      "blocks.9.ls1.gamma",
+      "blocks.9.norm2.weight",
+      "blocks.9.mlp.fc1.bias",
+      "blocks.9.mlp.fc2.bias",
+      "blocks.9.ls2.gamma"
+    ],
+    "lr_scale": 0.421875
+  },
+  "layer_10_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.9.attn.qkv.weight",
+      "blocks.9.attn.proj.weight",
+      "blocks.9.mlp.fc1.weight",
+      "blocks.9.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.421875
+  },
+  "layer_11_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.10.norm1.weight",
+      "blocks.10.attn.proj.bias",
+      "blocks.10.attn.q_norm.weight",
+      "blocks.10.attn.k_norm.weight",
+      "blocks.10.ls1.gamma",
+      "blocks.10.norm2.weight",
+      "blocks.10.mlp.fc1.bias",
+      "blocks.10.mlp.fc2.bias",
+      "blocks.10.ls2.gamma"
+    ],
+    "lr_scale": 0.5625
+  },
+  "layer_11_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.10.attn.qkv.weight",
+      "blocks.10.attn.proj.weight",
+      "blocks.10.mlp.fc1.weight",
+      "blocks.10.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.5625
+  },
+  "layer_12_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "blocks.11.norm1.weight",
+      "blocks.11.attn.proj.bias",
+      "blocks.11.attn.q_norm.weight",
+      "blocks.11.attn.k_norm.weight",
+      "blocks.11.ls1.gamma",
+      "blocks.11.norm2.weight",
+      "blocks.11.mlp.fc1.bias",
+      "blocks.11.mlp.fc2.bias",
+      "blocks.11.ls2.gamma"
+    ],
+    "lr_scale": 0.75
+  },
+  "layer_12_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "blocks.11.attn.qkv.weight",
+      "blocks.11.attn.proj.weight",
+      "blocks.11.mlp.fc1.weight",
+      "blocks.11.mlp.fc2.weight"
+    ],
+    "lr_scale": 0.75
+  },
+  "layer_13_no_decay": {
+    "weight_decay": 0.0,
+    "params": [
+      "clip_projector.norm1_q.weight",
+      "clip_projector.norm1_q.bias",
+      "clip_projector.norm1_k.weight",
+      "clip_projector.norm1_k.bias",
+      "clip_projector.norm1_v.weight",
+      "clip_projector.norm1_v.bias",
+      "clip_projector.cross_attn.q_bias",
+      "clip_projector.cross_attn.k_bias",
+      "clip_projector.cross_attn.v_bias",
+      "clip_projector.cross_attn.proj.bias",
+      "fc_norm.weight",
+      "fc_norm.bias",
+      "head.bias"
+    ],
+    "lr_scale": 1.0
+  },
+  "layer_13_decay": {
+    "weight_decay": 0.05,
+    "params": [
+      "clip_projector.cross_attn.q.weight",
+      "clip_projector.cross_attn.k.weight",
+      "clip_projector.cross_attn.v.weight",
+      "clip_projector.cross_attn.proj.weight",
+      "head.weight"
+    ],
+    "lr_scale": 1.0
+  }
+}
+[2025-02-07 00:17:06,292] [INFO] [logging.py:129:log_dist] [Rank -1] DeepSpeed info: version=0.15.3, git-hash=unknown, git-branch=unknown
+[2025-02-07 00:17:06,292] [INFO] [comm.py:652:init_distributed] cdb=None
+[2025-02-07 00:17:06,293] [INFO] [config.py:733:__init__] Config mesh_device None world_size = 1
+[2025-02-07 00:17:06,437] [INFO] [logging.py:129:log_dist] [Rank 0] DeepSpeed Flops Profiler Enabled: True
+Using /gpfs/home1/sorlova/.cache/torch_extensions/py312_cu121 as PyTorch extensions root...
+Detected CUDA files, patching ldflags
+Emitting ninja build file /gpfs/home1/sorlova/.cache/torch_extensions/py312_cu121/fused_adam/build.ninja...
+/home/sorlova/anaconda3/envs/video/lib/python3.12/site-packages/torch/utils/cpp_extension.py:1965: UserWarning: TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'].
+  warnings.warn(
+Building extension module fused_adam...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+ninja: no work to do.
+Loading extension module fused_adam...
+Time to load fused_adam op: 1.2648015022277832 seconds
+[2025-02-07 00:17:07,707] [INFO] [logging.py:129:log_dist] [Rank 0] Using DeepSpeed Optimizer param name adam as basic optimizer
+[2025-02-07 00:17:07,707] [INFO] [logging.py:129:log_dist] [Rank 0] Removing param_group that has no 'params' in the basic Optimizer
+[2025-02-07 00:17:07,710] [INFO] [logging.py:129:log_dist] [Rank 0] DeepSpeed Basic Optimizer = FusedAdam
+[2025-02-07 00:17:07,710] [INFO] [logging.py:129:log_dist] [Rank 0] Creating fp16 optimizer with dynamic loss scale
+[2025-02-07 00:17:07,730] [INFO] [logging.py:129:log_dist] [Rank 0] DeepSpeed Final Optimizer = FP16_Optimizer
+[2025-02-07 00:17:07,730] [INFO] [logging.py:129:log_dist] [Rank 0] DeepSpeed using configured LR scheduler = None
+[2025-02-07 00:17:07,730] [INFO] [logging.py:129:log_dist] [Rank 0] DeepSpeed LR Scheduler = None
+[2025-02-07 00:17:07,730] [INFO] [logging.py:129:log_dist] [Rank 0] step=0, skipped=0, lr=[0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005, 0.0005], mom=[[0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999], [0.9, 0.999]]
+[2025-02-07 00:17:07,731] [INFO] [config.py:999:print] DeepSpeedEngine configuration:
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   activation_checkpointing_config  {
+    "partition_activations": false, 
+    "contiguous_memory_optimization": false, 
+    "cpu_checkpointing": false, 
+    "number_checkpoints": null, 
+    "synchronize_checkpoint_boundary": false, 
+    "profile": false
+}
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   aio_config ................... {'block_size': 1048576, 'queue_depth': 8, 'thread_count': 1, 'single_submit': False, 'overlap_events': True, 'use_gds': False}
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   amp_enabled .................. False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   amp_params ................... {'opt_level': 'O2'}
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   autotuning_config ............ {
+    "enabled": false, 
+    "start_step": null, 
+    "end_step": null, 
+    "metric_path": null, 
+    "arg_mappings": null, 
+    "metric": "throughput", 
+    "model_info": null, 
+    "results_dir": "autotuning_results", 
+    "exps_dir": "autotuning_exps", 
+    "overwrite": true, 
+    "fast": true, 
+    "start_profile_step": 3, 
+    "end_profile_step": 5, 
+    "tuner_type": "gridsearch", 
+    "tuner_early_stopping": 5, 
+    "tuner_num_trials": 50, 
+    "model_info_path": null, 
+    "mp_size": 1, 
+    "max_train_batch_size": null, 
+    "min_train_batch_size": 1, 
+    "max_train_micro_batch_size_per_gpu": 1.024000e+03, 
+    "min_train_micro_batch_size_per_gpu": 1, 
+    "num_tuning_micro_batch_sizes": 3
+}
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   bfloat16_enabled ............. False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   bfloat16_immediate_grad_update  False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   checkpoint_parallel_write_pipeline  False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   checkpoint_tag_validation_enabled  True
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   checkpoint_tag_validation_fail  False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   comms_config ................. <deepspeed.comm.config.DeepSpeedCommsConfig object at 0x14d7d9047710>
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   communication_data_type ...... None
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   compression_config ........... {'weight_quantization': {'shared_parameters': {'enabled': False, 'quantizer_kernel': False, 'schedule_offset': 0, 'quantize_groups': 1, 'quantize_verbose': False, 'quantization_type': 'symmetric', 'quantize_weight_in_forward': False, 'rounding': 'nearest', 'fp16_mixed_quantize': False, 'quantize_change_ratio': 0.001}, 'different_groups': {}}, 'activation_quantization': {'shared_parameters': {'enabled': False, 'quantization_type': 'symmetric', 'range_calibration': 'dynamic', 'schedule_offset': 1000}, 'different_groups': {}}, 'sparse_pruning': {'shared_parameters': {'enabled': False, 'method': 'l1', 'schedule_offset': 1000}, 'different_groups': {}}, 'row_pruning': {'shared_parameters': {'enabled': False, 'method': 'l1', 'schedule_offset': 1000}, 'different_groups': {}}, 'head_pruning': {'shared_parameters': {'enabled': False, 'method': 'topk', 'schedule_offset': 1000}, 'different_groups': {}}, 'channel_pruning': {'shared_parameters': {'enabled': False, 'method': 'l1', 'schedule_offset': 1000}, 'different_groups': {}}, 'layer_reduction': {'enabled': False}}
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   curriculum_enabled_legacy .... False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   curriculum_params_legacy ..... False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   data_efficiency_config ....... {'enabled': False, 'seed': 1234, 'data_sampling': {'enabled': False, 'num_epochs': 1000, 'num_workers': 0, 'curriculum_learning': {'enabled': False}}, 'data_routing': {'enabled': False, 'random_ltd': {'enabled': False, 'layer_token_lr_schedule': {'enabled': False}}}}
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   data_efficiency_enabled ...... False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   dataloader_drop_last ......... False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   disable_allgather ............ False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   dump_state ................... False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   dynamic_loss_scale_args ...... {'init_scale': 65536, 'scale_window': 500, 'delayed_shift': 2, 'consecutive_hysteresis': False, 'min_scale': 1}
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   eigenvalue_enabled ........... False
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   eigenvalue_gas_boundary_resolution  1
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   eigenvalue_layer_name ........ bert.encoder.layer
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   eigenvalue_layer_num ......... 0
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   eigenvalue_max_iter .......... 100
+[2025-02-07 00:17:07,732] [INFO] [config.py:1003:print]   eigenvalue_stability ......... 1e-06
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   eigenvalue_tol ............... 0.01
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   eigenvalue_verbose ........... False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   elasticity_enabled ........... False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   flops_profiler_config ........ {
+    "enabled": true, 
+    "recompute_fwd_factor": 0.0, 
+    "profile_step": -1, 
+    "module_depth": -1, 
+    "top_modules": 1, 
+    "detailed": true, 
+    "output_file": null
+}
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   fp16_auto_cast ............... False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   fp16_enabled ................. True
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   fp16_master_weights_and_gradients  False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   global_rank .................. 0
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   grad_accum_dtype ............. None
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   gradient_accumulation_steps .. 1
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   gradient_clipping ............ 0.0
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   gradient_predivide_factor .... 1.0
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   graph_harvesting ............. False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   hybrid_engine ................ enabled=False max_out_tokens=512 inference_tp_size=1 release_inference_cache=False pin_parameters=True tp_gather_partition_size=8
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   initial_dynamic_scale ........ 65536
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   load_universal_checkpoint .... False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   loss_scale ................... 0
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   memory_breakdown ............. False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   mics_hierarchial_params_gather  False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   mics_shard_size .............. -1
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   monitor_config ............... tensorboard=TensorBoardConfig(enabled=False, output_path='', job_name='DeepSpeedJobName') comet=CometConfig(enabled=False, samples_log_interval=100, project=None, workspace=None, api_key=None, experiment_name=None, experiment_key=None, online=None, mode=None) wandb=WandbConfig(enabled=False, group=None, team=None, project='deepspeed') csv_monitor=CSVConfig(enabled=False, output_path='', job_name='DeepSpeedJobName')
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   nebula_config ................ {
+    "enabled": false, 
+    "persistent_storage_path": null, 
+    "persistent_time_interval": 100, 
+    "num_of_version_in_retention": 2, 
+    "enable_nebula_load": true, 
+    "load_path": null
+}
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   optimizer_legacy_fusion ...... False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   optimizer_name ............... adam
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   optimizer_params ............. {'lr': 0.0005, 'weight_decay': 0.05, 'bias_correction': True, 'betas': [0.9, 0.999], 'eps': 1e-08}
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   pipeline ..................... {'stages': 'auto', 'partition': 'best', 'seed_layers': False, 'activation_checkpoint_interval': 0, 'pipe_partitioned': True, 'grad_partitioned': True}
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   pld_enabled .................. False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   pld_params ................... False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   prescale_gradients ........... False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   scheduler_name ............... None
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   scheduler_params ............. None
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   seq_parallel_communication_data_type  torch.float32
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   sparse_attention ............. None
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   sparse_gradients_enabled ..... False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   steps_per_print .............. 1
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   timers_config ................ enabled=True synchronized=True
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   train_batch_size ............. 560
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   train_micro_batch_size_per_gpu  560
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   use_data_before_expert_parallel_  False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   use_node_local_storage ....... False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   wall_clock_breakdown ......... True
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   weight_quantization_config ... None
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   world_size ................... 1
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   zero_allow_untested_optimizer  True
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   zero_config .................. stage=0 contiguous_gradients=True reduce_scatter=True reduce_bucket_size=500000000 use_multi_rank_bucket_allreduce=True allgather_partitions=True allgather_bucket_size=500000000 overlap_comm=False load_from_fp32_weights=True elastic_checkpoint=False offload_param=None offload_optimizer=None sub_group_size=1000000000 cpu_offload_param=None cpu_offload_use_pin_memory=None cpu_offload=None prefetch_bucket_size=50000000 param_persistence_threshold=100000 model_persistence_threshold=9223372036854775807 max_live_parameters=1000000000 max_reuse_distance=1000000000 gather_16bit_weights_on_model_save=False use_all_reduce_for_fetch_params=False stage3_gather_fp16_weights_on_model_save=False ignore_unused_parameters=True legacy_stage1=False round_robin_gradients=False zero_hpz_partition_size=1 zero_quantized_weights=False zero_quantized_nontrainable_weights=False zero_quantized_gradients=False mics_shard_size=-1 mics_hierarchical_params_gather=False memory_efficient_linear=True pipeline_loading_checkpoint=False override_module_apply=True
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   zero_enabled ................. False
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   zero_force_ds_cpu_optimizer .. True
+[2025-02-07 00:17:07,733] [INFO] [config.py:1003:print]   zero_optimization_stage ...... 0
+[2025-02-07 00:17:07,734] [INFO] [config.py:989:print_user_config]   json = {
+    "train_batch_size": 560, 
+    "train_micro_batch_size_per_gpu": 560, 
+    "steps_per_print": 1, 
+    "optimizer": {
+        "type": "Adam", 
+        "adam_w_mode": true, 
+        "params": {
+            "lr": 0.0005, 
+            "weight_decay": 0.05, 
+            "bias_correction": true, 
+            "betas": [0.9, 0.999], 
+            "eps": 1e-08
+        }
+    }, 
+    "fp16": {
+        "enabled": true, 
+        "loss_scale": 0, 
+        "initial_scale_power": 16, 
+        "loss_scale_window": 500, 
+        "hysteresis": 2, 
+        "min_loss_scale": 1
+    }, 
+    "bf16": {
+        "enabled": false
+    }, 
+    "amp": {
+        "enabled": false, 
+        "opt_level": "O2"
+    }, 
+    "flops_profiler": {
+        "enabled": true, 
+        "profile_step": -1, 
+        "module_depth": -1, 
+        "top_modules": 1, 
+        "detailed": true
+    }, 
+    "zero_allow_untested_optimizer": true
+}
+model.gradient_accumulation_steps() = 1
+criterion = CrossEntropyLoss()
+Auto resume the latest checkpoint
+No latest model
+Auto resume the best checkpoint
+No best model
+No other models
+Use bf16 False
+Test:  [  0/413]  eta: 9:09:01  loss: 0.2751 (0.2751)  acc1: 90.1786 (90.1786)  time: 79.7627 (max: 79.7627)  data: 72.7425 (max: 72.7425)  max mem: 26455
+Test:  [ 10/413]  eta: 1:15:20  loss: 0.4253 (0.4237)  acc1: 81.0714 (81.3149)  time: 11.2181 (max: 79.7627)  data: 9.2466 (max: 72.7425)  max mem: 26455
+Test:  [ 20/413]  eta: 0:58:23  loss: 0.4197 (0.3988)  acc1: 81.0714 (81.7942)  time: 5.3734 (max: 49.9970)  data: 3.9081 (max: 48.5360)  max mem: 26455
+Test:  [ 30/413]  eta: 0:54:55  loss: 0.4028 (0.4107)  acc1: 81.2500 (81.0484)  time: 7.1663 (max: 49.9970)  data: 5.7026 (max: 48.5360)  max mem: 26455
+Test:  [ 40/413]  eta: 0:54:49  loss: 0.3760 (0.4115)  acc1: 81.2500 (81.0235)  time: 8.7154 (max: 46.9616)  data: 7.2523 (max: 45.4980)  max mem: 26455
+Test:  [ 50/413]  eta: 0:49:26  loss: 0.3618 (0.3996)  acc1: 84.8214 (81.7787)  time: 7.5057 (max: 34.4156)  data: 6.0428 (max: 32.9546)  max mem: 26455
+Test:  [ 60/413]  eta: 0:46:31  loss: 0.3672 (0.4040)  acc1: 83.2143 (81.4344)  time: 6.0388 (max: 40.0162)  data: 4.5759 (max: 38.5558)  max mem: 26455
+Test:  [ 70/413]  eta: 0:44:29  loss: 0.3955 (0.4006)  acc1: 82.1429 (81.6751)  time: 6.7853 (max: 40.0162)  data: 5.3222 (max: 38.5558)  max mem: 26455
+Test:  [ 80/413]  eta: 0:44:29  loss: 0.3669 (0.4016)  acc1: 83.0357 (81.6182)  time: 8.3508 (max: 38.4714)  data: 6.8879 (max: 37.0083)  max mem: 26455
+Test:  [ 90/413]  eta: 0:41:27  loss: 0.3914 (0.4178)  acc1: 79.4643 (80.9753)  time: 7.4191 (max: 35.1591)  data: 5.9560 (max: 33.6975)  max mem: 26456
+Test:  [100/413]  eta: 0:39:20  loss: 0.4373 (0.4202)  acc1: 79.4643 (80.8663)  time: 5.6113 (max: 32.1358)  data: 4.1475 (max: 30.6702)  max mem: 26456
+Test:  [110/413]  eta: 0:37:33  loss: 0.3479 (0.4211)  acc1: 81.0714 (80.7272)  time: 6.2282 (max: 32.1358)  data: 4.7645 (max: 30.6702)  max mem: 26456
+Test:  [120/413]  eta: 0:36:51  loss: 0.3840 (0.4235)  acc1: 79.4643 (80.5357)  time: 7.5848 (max: 29.7994)  data: 6.1212 (max: 28.3365)  max mem: 26456
+Test:  [130/413]  eta: 0:34:57  loss: 0.4604 (0.4274)  acc1: 79.4643 (80.3476)  time: 7.2787 (max: 30.8322)  data: 5.8147 (max: 29.3686)  max mem: 26456
+Test:  [140/413]  eta: 0:33:13  loss: 0.4192 (0.4248)  acc1: 78.2143 (80.3787)  time: 5.8090 (max: 30.8322)  data: 4.3453 (max: 29.3686)  max mem: 26456
+Test:  [150/413]  eta: 0:32:06  loss: 0.4192 (0.4250)  acc1: 78.9286 (80.4518)  time: 6.7533 (max: 26.9677)  data: 5.2900 (max: 25.5068)  max mem: 26456
+Test:  [160/413]  eta: 0:31:17  loss: 0.4451 (0.4403)  acc1: 76.4286 (79.7959)  time: 8.2801 (max: 35.3081)  data: 6.8170 (max: 33.8450)  max mem: 26456
+Test:  [170/413]  eta: 0:29:40  loss: 0.5063 (0.4465)  acc1: 73.9286 (79.4601)  time: 7.3524 (max: 35.3081)  data: 5.8895 (max: 33.8450)  max mem: 26456

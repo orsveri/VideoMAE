@@ -38,7 +38,7 @@ conda activate /home/sorlova/anaconda3/envs/video
 cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 
 # Set the path to save checkpoints
-OUTPUT_DIR='logs/my_pretrain/kinetics700_extra_pretrain_vits/from_k400_full_regular_LR1'
+OUTPUT_DIR='logs/my_pretrain/kinetics700_extra_pretrain_vits/from_k400_full_regular_LR2'
 # path to Kinetics set (train.csv/val.csv/test.csv
 DATA_PATH='/scratch-nvme/ml-datasets/kinetics/k700-2020'
 # path to pretrain model
@@ -62,10 +62,10 @@ torchrun --nproc_per_node=4 \
     --sampling_rate 4 \
     --opt adamw \
     --opt_betas 0.9 0.95 \
-    --warmup_epochs 1 \
+    --warmup_epochs 0 \
     --save_ckpt_freq 1 \
     --epochs 5 \
     --log_dir ${OUTPUT_DIR} \
     --output_dir ${OUTPUT_DIR} \
     --lr 1e-5 \
-    --min_lr 1e-6 \
+    --min_lr 0.5e-6 \

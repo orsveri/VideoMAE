@@ -447,6 +447,7 @@ class VideoMAE(torch.utils.data.Dataset):
                  num_crop=1,
                  new_length=1,
                  new_step=1,
+                 intermediate_size=320,
                  transform=None,
                  temporal_jitter=False,
                  video_loader=False,
@@ -472,6 +473,7 @@ class VideoMAE(torch.utils.data.Dataset):
         self.video_loader = video_loader
         self.video_ext = video_ext
         self.use_decord = use_decord
+        self.intermediate_size = intermediate_size
         self.transform = transform
         self.lazy_init = lazy_init
         self.args = args
@@ -620,12 +622,13 @@ class VideoMAE(torch.utils.data.Dataset):
             resized_frames = []
             for frame in video_data:
                 h, w, _ = frame.shape
+                short_size = min([h, w, self.intermediate_size])
                 if h < w:
-                    scale = 320 / h
-                    new_h, new_w = 320, int(w * scale)
+                    scale = short_size / h
+                    new_h, new_w = short_size, int(w * scale)
                 else:
-                    scale = 320 / w
-                    new_h, new_w = int(h * scale), 320
+                    scale = short_size / w
+                    new_h, new_w = int(h * scale), short_size
 
                 resized_frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
                 resized_frames.append(resized_frame)
