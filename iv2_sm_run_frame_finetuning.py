@@ -426,6 +426,12 @@ def main(args, ds_init):
             mixup_alpha=args.mixup, cutmix_alpha=args.cutmix, cutmix_minmax=args.cutmix_minmax,
             prob=args.mixup_prob, switch_prob=args.mixup_switch_prob, mode=args.mixup_mode,
             label_smoothing=args.smoothing, num_classes=args.nb_classes)
+        
+    if hasattr(args, "qkv_bias"):
+        print("QKV_bias: set")
+    else:
+        print("QKV_bias: No qkv bias attribute!")
+        exit(0)
 
     model = create_model(
         args.model,
@@ -444,6 +450,8 @@ def main(args, ds_init):
         layerscale_no_force_fp32=args.layerscale_no_force_fp32,
         qkv_bias=args.qkv_bias if hasattr(args, "qkv_bias") else False
     )
+
+    exit(0)
 
     patch_size = model.patch_embed.patch_size
     print("Patch size = %s" % str(patch_size))

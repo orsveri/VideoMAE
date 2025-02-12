@@ -1,3 +1,4 @@
+import sys
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -5,6 +6,11 @@ import torch
 from scipy.ndimage import label
 from torch.nn.functional import softmax
 from natsort import natsorted
+
+root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(root_path)
+
+from engine_for_frame_finetuning import calculate_metrics
 
 
 def get_pos_and_neg_probs():
@@ -31,20 +37,22 @@ bce_loss_builtin = torch.nn.functional.binary_cross_entropy(prediction_clipped, 
 print(f"Binary Cross-Entropy Loss (Builtin): {bce_loss_builtin.item()}")
 
 # "_fixttc" ?
-predictions1 = "/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/crossentropy/checkpoint-{}/OUT{}_fixttc/predictions_0.csv"
+dota_anno_folder = "/gpfs/work3/0/tese0625/RiskNetData/DoTA_refined/dataset/annotations"
+predictions1 = "/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/ft_after_pretrain/pt_bdd/13_dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3/eval_DADA2K_ckpt_14/predictions.csv"
 clip_err_out = "err_report.csv"
 out_figures_dir = "err_report"
-epoch = 3
+epoch = 14
 tag = "_train" # "_train" or ""
 show_hists = True
 save_plots = True
 
-if "crossentropy" in predictions1:
-    loss_tag = "CE"
-elif "focal" in predictions1:
-    loss_tag = "Focal"
-else:
-    raise ValueError("Impossible loss directory!")
+# if "crossentropy" in predictions1:
+#     loss_tag = "CE"
+# elif "focal" in predictions1:
+#     loss_tag = "Focal"
+# else:
+#     raise ValueError("Impossible loss directory!")
+loss_tag = "train DoTA, test DADA2K"
 
 
 # ======================================================
@@ -59,6 +67,24 @@ labels = df["label"].to_numpy().astype(bool)
 
 pos_preds = probs[labels]
 neg_preds = probs[~labels]
+
+
+# save stats
+metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(logits, torch.tensor(labels))
+lines = ["\n===================================",
+         f"mAP: {ap}, auroc: {auroc}, acc: {metr_acc}",
+         f"P@0.5: {precision}, R@0.5: {recall}, F1@0.5: {f1}",
+         f"Confmat: \n\t{confmat[0][0]} | {confmat[0][1]} \n\t{confmat[1][0]} | {confmat[1][1]}",
+         f"----------------------------"]
+with open(os.path.join(os.path.dirname(predictions), "general_stats.txt"), "w") as f:
+    for l in lines:
+        f.write(l + "\n")
+        print(l)
+
+
+if save_plots:
+    os.makedirs(out_figures_dir, exist_ok=True)
+
 
 if show_hists:
     fig = plt.figure(figsize=(8, 6), num="probs histogram")
@@ -130,7 +156,7 @@ err_df["night"] = None
 import json
 for i, row in err_df.iterrows():
     clip_name = row["clip"]
-    anno_path = os.path.join("/mnt/experiments/sorlova/datasets/DoTA/dataset/annotations", clip_name + ".json")
+    anno_path = os.path.join(dota_anno_folder, clip_name + ".json")
     with open(anno_path) as f:
         anno = json.load(f)
         err_df.loc[i, "category"] = anno["accident_name"]
@@ -162,9 +188,6 @@ scores_ego = [ego_df["err_score"].mean(), ego_df["err_far_score"].mean(), noego_
 scores_ego_labels = ["ego_score", "ego_far_score", "noego_score", "noego_far_score"]
 scores_night = [night_df["err_score"].mean(), night_df["err_far_score"].mean(), nonight_df["err_score"].mean(), nonight_df["err_far_score"].mean()]
 scores_night_labels = ["night_score", "night_far_score", "day_score", "day_far_score"]
-
-if save_plots:
-    os.makedirs(out_figures_dir, exist_ok=True)
 
 fig = plt.figure(figsize=(8, 6), num="scores_categories")
 plt.bar(cats, scores_cat, color='blue', label='all errs')

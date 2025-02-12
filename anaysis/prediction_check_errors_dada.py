@@ -1,3 +1,4 @@
+import sys
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -6,7 +7,11 @@ from scipy.ndimage import label
 from torch.nn.functional import softmax
 from natsort import natsorted
 
+root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(root_path)
+
 from dada import FrameClsDataset_DADA
+from engine_for_frame_finetuning import calculate_metrics
 
 
 def get_pos_and_neg_probs():
@@ -32,21 +37,22 @@ prediction_clipped = torch.clamp(prediction, epsilon, 1.0)
 bce_loss_builtin = torch.nn.functional.binary_cross_entropy(prediction_clipped, target)
 print(f"Binary Cross-Entropy Loss (Builtin): {bce_loss_builtin.item()}")
 
-predictions1 = "/home/sorlova/repos/NewStart/VideoMAE/logs/auroc_behavior/crossentropy/checkpoint-{}/OUT_DADA2k{}_fixttc/predictions_0.csv"
+dada_anno_folder = "/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/DADA2K/annotation/full_anno.csv"
+predictions1 = "/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/baselines/bl1/1_lr1e3_b56x1_dsampl1val2_ld06_aam6n3/eval_DADA2K_ckpt_16/predictions.csv"
 clip_err_out = "err_report.csv"
 out_figures_dir = "err_report"
-epoch = 3
+epoch = 16
 tag = "" # "_train" or ""
-show_hists = False
+show_hists = True
 save_plots = True
 
-if "crossentropy" in predictions1:
-    loss_tag = "CE"
-elif "focal" in predictions1:
-    loss_tag = "Focal"
-else:
-    raise ValueError("Impossible loss directory!")
-
+# if "crossentropy" in predictions1:
+#     loss_tag = "CE"
+# elif "focal" in predictions1:
+#     loss_tag = "Focal"
+# else:
+#     raise ValueError("Impossible loss directory!")
+loss_tag = "train DoTA, test DADA2K"
 
 # ======================================================
 predictions = predictions1.format(epoch, tag)
@@ -60,6 +66,21 @@ labels = df["label"].to_numpy().astype(bool)
 
 pos_preds = probs[labels]
 neg_preds = probs[~labels]
+
+# save stats
+metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(logits, torch.tensor(labels))
+lines = ["\n===================================",
+         f"mAP: {ap}, auroc: {auroc}, acc: {metr_acc}",
+         f"P@0.5: {precision}, R@0.5: {recall}, F1@0.5: {f1}",
+         f"Confmat: \n\t{confmat[0][0]} | {confmat[0][1]} \n\t{confmat[1][0]} | {confmat[1][1]}",
+         f"----------------------------"]
+with open(os.path.join(os.path.dirname(predictions), "general_stats.txt"), "w") as f:
+    for l in lines:
+        f.write(l + "\n")
+        print(l)
+
+if save_plots:
+    os.makedirs(out_figures_dir, exist_ok=True)
 
 if show_hists:
     plt.figure(figsize=(8, 6))
@@ -125,7 +146,7 @@ err_df["category"] = None
 err_df["ego"] = None
 #err_df["night"] = None
 
-anno_path = os.path.join("/mnt/experiments/sorlova/datasets/LOTVS/DADA/DADA2000/annotation/full_anno.csv")
+anno_path = dada_anno_folder
 anno = pd.read_csv(anno_path)
 for i, row in err_df.iterrows():
     clip_name = row["clip"]

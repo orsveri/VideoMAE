@@ -408,7 +408,13 @@ class InternVideo2(nn.Module):
                     with_cp_list[idx] = True
         print(f"Droppath rate: {dpr}")
         print(f"Checkpoint list: {with_cp_list}")
-        
+
+        if qkv_bias:
+            print("QKV2: Set")
+        else:
+            print("QKV2: Not set")
+            exit(0)
+
         self.blocks = nn.ModuleList([
             Block(embed_dim, num_heads, mlp_ratio, qkv_bias=qkv_bias,
                   norm_layer=norm_layer_for_blocks,
