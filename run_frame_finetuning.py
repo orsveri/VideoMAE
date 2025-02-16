@@ -239,25 +239,26 @@ def main(args, ds_init):
     # "16_8": ["ft_after_pretrain/pt_bdd/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 8],
     # "16_13": ["ft_after_pretrain/pt_bdd/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 13]
     # }
-    experiment_dict = {
-    "9_5": ["baselines/bl3/9_dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 5],
-    "10_6": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 6],
-    "10_18": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 18],
-    "11": ["baselines/bl3/dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 3],
-    "12": ["baselines/bl3/dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 1],
-    }
-    exprmnt = str(args.eval_option)
-    assert exprmnt in experiment_dict
-    log_part, exp_ep = experiment_dict[exprmnt]
-    base_log_dir = os.path.join("logs", log_part)
-    out_dir = os.path.join(base_log_dir, f"eval_{args.data_set}_ckpt_{exp_ep}")
-    args.finetune = os.path.join(base_log_dir, f"checkpoint-{exp_ep}.pth")
-    args.log_dir = out_dir
-    args.output_dir = out_dir
-    assert os.path.exists(args.finetune)
+    # another bunch of logs
+    # experiment_dict = {
+    # "9_5": ["baselines/bl3/9_dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 5],
+    # "10_6": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 6],
+    # "10_18": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 18],
+    # "11": ["baselines/bl3/dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 3],
+    # "12": ["baselines/bl3/dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 1],
+    # }
+    # exprmnt = str(args.eval_option)
+    # assert exprmnt in experiment_dict
+    # log_part, exp_ep = experiment_dict[exprmnt]
+    # base_log_dir = os.path.join("logs", log_part)
+    # out_dir = os.path.join(base_log_dir, f"eval_{args.data_set}_ckpt_{exp_ep}")
+    # args.finetune = os.path.join(base_log_dir, f"checkpoint-{exp_ep}.pth")
+    # args.log_dir = out_dir
+    # args.output_dir = out_dir
+    # assert os.path.exists(args.finetune)
 
-    if args.eval:
-        os.makedirs(args.output_dir, exist_ok=True)
+    # if args.eval:
+    #     os.makedirs(args.output_dir, exist_ok=True)
     # =========================
 
     try:

@@ -38,11 +38,11 @@ print(f"Binary Cross-Entropy Loss (Builtin): {bce_loss_builtin.item()}")
 
 # "_fixttc" ?
 dota_anno_folder = "/gpfs/work3/0/tese0625/RiskNetData/DoTA_refined/dataset/annotations"
-predictions1 = "/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/ft_after_pretrain/pt_bdd/13_dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3/eval_DADA2K_ckpt_14/predictions.csv"
+predictions1 = "/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/other_models_results/full_results_DoTA/pred_full_best_model_dota.csv"
 clip_err_out = "err_report.csv"
 out_figures_dir = "err_report"
-epoch = 14
-tag = "_train" # "_train" or ""
+epoch = -1
+tag = "_FULL" # "_train" or ""
 show_hists = True
 save_plots = True
 
@@ -52,7 +52,7 @@ save_plots = True
 #     loss_tag = "Focal"
 # else:
 #     raise ValueError("Impossible loss directory!")
-loss_tag = "train DoTA, test DADA2K"
+loss_tag = "train CAPDATA FULL, test DoTA"
 
 
 # ======================================================

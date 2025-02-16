@@ -454,7 +454,8 @@ class VideoMAE(torch.utils.data.Dataset):
                  use_decord=False,
                  lazy_init=False,
                  manager=None,
-                 args=None):
+                 args=None,
+                 prepared_clips_file=None):
 
         super(VideoMAE, self).__init__()
         self.root = root
@@ -483,6 +484,14 @@ class VideoMAE(torch.utils.data.Dataset):
             if len(self.clips) == 0:
                 raise(RuntimeError("Found 0 video clips in subfolders of: " + root + "\n"
                                    "Check your data directory (opt.data-dir)."))
+            
+        # if prepared_clips_file:
+        #     clips = []
+        #     # read from the file, but lines are tuples!
+        #     with open(prepared_clips_file, 'r') as file:
+        #         clips = [line.rstrip() for line in file]
+        #     assert len(clips) > 0, f"Cannot find any video clips for the given split: {setting}"
+        #     self.clips = clips
         
         if manager:
             self.corrupt_clips = manager.list()
@@ -790,6 +799,7 @@ if __name__ == "__main__":
     dataset = VideoMAE(
         root='/scratch-nvme/ml-datasets/kinetics/k700-2020',
         setting="annotations/train.csv",
+        prepared_clips_file="/gpfs/work3/0/tese0625/datasets/k700/prepared_clips.txt",
         video_ext='mp4',
         is_color=True,
         modality='rgb',
@@ -800,40 +810,47 @@ if __name__ == "__main__":
         video_loader=True,
         use_decord=True,
         lazy_init=False,
-        manager=manager)
+        manager=None)
     L = len(dataset)
     
-    dataloader = CustomDataLoader(dataset, batch_size=200, shuffle=False, num_workers=15, pin_memory=False, drop_last=False, persistent_workers=False)
-    L2 = len(dataloader)
-    print_break = L2 // 4
-    print(f"\nDataset length: {L}, Batch size: 200, Batch numbers: {L2}, print break every {print_break} batches\n")
+    print(f"\nDataset length: {L}, preparing samples...")
 
-    for idx, batch in tqdm(enumerate(dataloader), total=L2, desc="Validating dataset"):
-        _ = batch
+    clips = dataset.clips
 
-        if idx % print_break == 0:
-            problems = dataloader.dataset.corrupt_clips_decord
-            problems_ = "\n".join(problems)
-            if len(problems) > 0:
-                with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/decord_err_train_b200_{idx}.txt", mode="w") as f:
-                    f.write(problems_)
-            problems = dataloader.dataset.corrupt_clips
-            problems_ = "\n".join(problems)
-            if len(problems) > 0:
-                with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/opencv_err_train_b200_{idx}.txt", mode="w") as f:
-                    f.write(problems_)
-        
-    problems = dataloader.dataset.corrupt_clips_decord
-    problems_ = "\n".join(problems)
-    if len(problems) > 0:
-        with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/decord_err_train_b200.txt", mode="w") as f:
-            f.write(problems_)
-    problems = dataloader.dataset.corrupt_clips
-    problems_ = "\n".join(problems)
-    if len(problems) > 0:
-        with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/opencv_err_train_b200.txt", mode="w") as f:
-            f.write(problems_)
+    print("Writing clips...")
+    with open("/gpfs/work3/0/tese0625/datasets/k700/prepared_clips.txt", "w") as file:
+        for line in clips:
+            file.write(line + "\n")
+    print("\tClips done!")
 
     print("Done!")
+
+    # for idx, batch in tqdm(enumerate(dataloader), total=L2, desc="Validating dataset"):
+    #     _ = batch
+
+    #     if idx % print_break == 0:
+    #         problems = dataloader.dataset.corrupt_clips_decord
+    #         problems_ = "\n".join(problems)
+    #         if len(problems) > 0:
+    #             with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/decord_err_train_b200_{idx}.txt", mode="w") as f:
+    #                 f.write(problems_)
+    #         problems = dataloader.dataset.corrupt_clips
+    #         problems_ = "\n".join(problems)
+    #         if len(problems) > 0:
+    #             with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/opencv_err_train_b200_{idx}.txt", mode="w") as f:
+    #                 f.write(problems_)
+        
+    # problems = dataloader.dataset.corrupt_clips_decord
+    # problems_ = "\n".join(problems)
+    # if len(problems) > 0:
+    #     with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/decord_err_train_b200.txt", mode="w") as f:
+    #         f.write(problems_)
+    # problems = dataloader.dataset.corrupt_clips
+    # problems_ = "\n".join(problems)
+    # if len(problems) > 0:
+    #     with open(f"/home/sorlova/repos/AITHENA/NewStage/VideoMAE/scripts/kinetics2/opencv_err_train_b200.txt", mode="w") as f:
+    #         f.write(problems_)
+
+    # print("Done!")
     exit(0)
 

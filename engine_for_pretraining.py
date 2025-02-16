@@ -29,7 +29,7 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
     # save grad norms
     if_dist = dist.is_initialized()
     qkv_grad_norms = np.zeros(shape=(12, 6, 5), dtype=np.float64)
-    proj_grad_norms = np.zeros(shape=(12, 2), dtype=np.float64)
+    proj_grad_norms = np.zeros(shape=(12, 6), dtype=np.float64)
     patch_embed_grad_norms = np.zeros(shape=(2,), dtype=np.float64)
 
     for step, batch in enumerate(metric_logger.log_every(data_loader, print_freq, header)):

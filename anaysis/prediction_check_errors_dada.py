@@ -38,11 +38,11 @@ bce_loss_builtin = torch.nn.functional.binary_cross_entropy(prediction_clipped, 
 print(f"Binary Cross-Entropy Loss (Builtin): {bce_loss_builtin.item()}")
 
 dada_anno_folder = "/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/DADA2K/annotation/full_anno.csv"
-predictions1 = "/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/baselines/bl1/1_lr1e3_b56x1_dsampl1val2_ld06_aam6n3/eval_DADA2K_ckpt_16/predictions.csv"
+predictions1 = "logs/other_models_results/min_results_DADA2K/pred_min_best_model_dada2k.csv"
 clip_err_out = "err_report.csv"
 out_figures_dir = "err_report"
-epoch = 16
-tag = "" # "_train" or ""
+epoch = -1
+tag = "_FULL" # "_train" or ""
 show_hists = True
 save_plots = True
 
@@ -52,7 +52,7 @@ save_plots = True
 #     loss_tag = "Focal"
 # else:
 #     raise ValueError("Impossible loss directory!")
-loss_tag = "train DoTA, test DADA2K"
+loss_tag = "train CAPDATA FULL, test DADA2K"
 
 # ======================================================
 predictions = predictions1.format(epoch, tag)
