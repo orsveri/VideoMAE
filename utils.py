@@ -255,6 +255,7 @@ def save_on_master(*args, **kwargs):
 
 def init_distributed_mode(args):
     if args.dist_on_itp:
+        print("INIT dist_on_itp")
         args.rank = int(os.environ['OMPI_COMM_WORLD_RANK'])
         args.world_size = int(os.environ['OMPI_COMM_WORLD_SIZE'])
         args.gpu = int(os.environ['OMPI_COMM_WORLD_LOCAL_RANK'])
@@ -263,15 +264,18 @@ def init_distributed_mode(args):
         os.environ['RANK'] = str(args.rank)
         os.environ['WORLD_SIZE'] = str(args.world_size)
     elif 'SLURM_PROCID' in os.environ:
-        # args.rank = int(os.environ['SLURM_PROCID'])
-        # args.gpu = int(os.environ['SLURM_LOCALID'])
-        # args.world_size = int(os.environ['SLURM_NTASKS'])
+        print("INIT slurm")
+        # 1
         args.rank = int(os.environ['RANK'])
         args.gpu = int(os.environ['LOCAL_RANK'])
         args.world_size = int(os.environ['WORLD_SIZE'])
-        os.environ['RANK'] = str(args.rank)
-        os.environ['LOCAL_RANK'] = str(args.gpu)
-        os.environ['WORLD_SIZE'] = str(args.world_size)
+        # 2
+        # args.rank = int(os.environ['SLURM_PROCID'])
+        # args.gpu = int(os.environ['SLURM_LOCALID'])
+        # args.world_size = int(os.environ['SLURM_NTASKS'])
+        # os.environ['RANK'] = str(args.rank)
+        # os.environ['LOCAL_RANK'] = str(args.gpu)
+        # os.environ['WORLD_SIZE'] = str(args.world_size)
 
         node_list = os.environ['SLURM_NODELIST']
         addr = subprocess.getoutput(
@@ -279,6 +283,7 @@ def init_distributed_mode(args):
         if 'MASTER_ADDR' not in os.environ:
             os.environ['MASTER_ADDR'] = addr
     elif 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+        print("INIT through env vars")
         args.rank = int(os.environ["RANK"])
         args.world_size = int(os.environ['WORLD_SIZE'])
         args.gpu = int(os.environ['LOCAL_RANK'])

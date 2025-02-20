@@ -5,8 +5,8 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH --partition=gpu_h100
 #SBATCH --cpus-per-task=14
-#SBATCH --time=30:00:00
-#SBATCH --output=jobs/job_outputs/pretrain_k700_decord_%j.out
+#SBATCH --time=80:00:00
+#SBATCH --output=jobs/job_outputs/pretrain_k700_bl1_decord_%j.out
 
 # For H100 nodes:
 #export NCCL_SOCKET_IFNAME="eno2np0"
@@ -38,17 +38,17 @@ conda activate /home/sorlova/anaconda3/envs/video
 cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 
 # Set the path to save checkpoints
-OUTPUT_DIR='logs/my_pretrain/kinetics700_extra_pretrain_vits/from_k400_full_regular_LR2'
+OUTPUT_DIR='logs/my_pretrain/bl1_vits_k700/'
 # path to Kinetics set (train.csv/val.csv/test.csv
 DATA_PATH='/scratch-nvme/ml-datasets/kinetics/k700-2020'
 # path to pretrain model
 MODEL_PATH='logs/pretrained/k400_vits/videomae_vits_k400_pretrain_ckpt.pth'
 
-
-# nproc_per_node is the number of used GPUs
-# batch_size is set for one GPU
-# batch_size=16, nproc_per_node=2 => the effective batch_size is 32
-# srun python run_frame_finetuning.py \
+# For BDD and BDD+CAP-DATA pretraining, we use: 
+#   - 1M samples per epoch    -> 1250 steps per epoch (over 4 GPUs in total) -> 20 epochs to achieve 25K steps
+# With Kinetics, we have only ~0.5M videos and we sample one video once per epoch be default, so:
+#   - 536685 samples per epoch -> 670 steps per epoch (over 4 GPUs in total) -> 38 ep to achieve 25K steps
+# Then we stopped training after 12 epochs, and here it will be 22-23 epochs
 torchrun --nproc_per_node=4 \
     run_mae_pretraining.py \
     --data_path ${DATA_PATH} \
@@ -57,15 +57,15 @@ torchrun --nproc_per_node=4 \
     --model pretrain_videomae_small_patch16_224 \
     --from_ckpt ${MODEL_PATH} \
     --decoder_depth 4 \
-    --batch_size 210 \
+    --batch_size 200 \
     --num_frames 16 \
     --sampling_rate 4 \
     --opt adamw \
     --opt_betas 0.9 0.95 \
-    --warmup_epochs 0 \
+    --warmup_epochs 1 \
+    --epochs 38 \
     --save_ckpt_freq 1 \
-    --epochs 5 \
     --log_dir ${OUTPUT_DIR} \
     --output_dir ${OUTPUT_DIR} \
-    --lr 1e-5 \
-    --min_lr 0.5e-6 \
+    --lr 3e-4 \
+    --min_lr 3e-5 \

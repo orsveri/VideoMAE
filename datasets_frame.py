@@ -119,9 +119,17 @@ def build_pretraining_dataset(is_train, args):
     elif args.data_set == 'BDD100K':
         anno_path = None
         orig_fps = 30
+        if args.num_frames == 8 and args.view_fps == 5:
+            clips_txt = "/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views_8frames_5fps/all_clips.txt"
+            views_txt = "/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views_8frames_5fps/all_dataset_samples.txt"
+        else:
+            clips_txt = "/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views/all_clips.txt"
+            views_txt = "/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views/all_dataset_samples.txt"
         dataset = VideoMAE_BDD100K_prepared(
-            clips_txt="/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views/all_clips.txt",
-            views_txt="/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views/all_dataset_samples.txt",
+            clips_txt=clips_txt,
+            views_txt=views_txt,
+            fps=orig_fps,
+            target_fps=args.view_fps,
             root=args.data_path,
             setting="/gpfs/work3/0/tese0625/datasets/bdd100k_splits/all.txt",
             video_ext='mov',
@@ -138,10 +146,18 @@ def build_pretraining_dataset(is_train, args):
     elif args.data_set == 'CAP-DATA':
         anno_path = "CAPDATA_my_split/training.txt"
         orig_fps = 30
+        if args.num_frames == 8 and args.view_fps == 5:
+            clips_txt="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits_8frames_5fps/training_clips.txt"
+            timesteps_pkl="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits_8frames_5fps/training_timesteps.pkl"
+            views_pkl="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits_8frames_5fps/training_dataset_samples.pkl"
+        else:
+            clips_txt="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_clips.txt"
+            timesteps_pkl="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_timesteps.pkl"
+            views_pkl="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_dataset_samples.pkl"
         dataset = VideoMAE_DADA2K_prepared(
-            clips_txt="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_clips.txt",
-            timesteps_pkl="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_timesteps.pkl",
-            views_pkl="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_dataset_samples.pkl",
+            clips_txt=clips_txt,
+            timesteps_pkl=timesteps_pkl,
+            views_pkl=views_pkl,
             setting=anno_path,
             root=args.data_path,
             video_ext='.jpg',

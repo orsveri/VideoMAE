@@ -38,7 +38,7 @@ conda activate /home/sorlova/anaconda3/envs/video
 cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 
 # Set the path to save checkpoints
-OUTPUT_DIR='logs/my_pretrain/vits_vidmae_k400/bdd-capdata_lightcrop_b200x4_mask075'
+OUTPUT_DIR='logs/my_pretrain/vits_vidmae_k400/bdd-capdata_lightcrop_b100x8_mask075'
 # path to data set 
 DATA_PATH1='/scratch-nvme/ml-datasets/bdd100k/videos'
 DATA_PATH2="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA"

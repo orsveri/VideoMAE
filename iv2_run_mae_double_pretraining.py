@@ -19,7 +19,7 @@ from engine_for_pretraining import train_one_epoch_double
 from utils import NativeScalerWithGradNormCount as NativeScaler
 import utils
 
-import modeling_pretrain
+from InternVideo2_single_modality.models import internvideo2_pretrain_videomae
 
 
 class CyclicDataLoader:
@@ -72,6 +72,13 @@ def get_args():
                         
     parser.add_argument('--normlize_target', default=True, type=bool,
                         help='normalized the target patch pixels')
+    # IV2 specific
+    parser.add_argument('--tubelet_size', type=int, default=1)
+    parser.add_argument('--layerscale_no_force_fp32', action='store_true',
+                        help="Not force fp32 for LayerScale")
+    parser.set_defaults(layerscale_no_force_fp32=False)
+    parser.add_argument('--sep_pos_embed', action='store_true',
+                        help="whether use seperable position embedding")
 
     # Optimizer parameters
     parser.add_argument('--opt', default='adamw', type=str, metavar='OPTIMIZER',
@@ -170,15 +177,25 @@ def get_model(args):
         drop_path_rate=args.drop_path,
         drop_block_rate=None,
         decoder_depth=args.decoder_depth,
-        use_checkpoint=args.use_checkpoint
+        use_checkpoint=args.use_checkpoint,
+        # IV2 specific
+        num_classes=0,
+        num_frames=args.num_frames,
+        tubelet_size=args.tubelet_size,
+        sep_pos_embed=args.sep_pos_embed,
+        checkpoint_num=0,
+        init_values=1e-5,
+        layerscale_no_force_fp32=False,
+        qkv_bias=args.qkv_bias if hasattr(args, "qkv_bias") else False
     )
     return model
 
 
 def main(args):
-    utils.init_distributed_mode(args)
+    #print("os environ")
+    #print(os.environ)
 
-    print(args)
+    utils.init_distributed_mode(args)
 
     device = torch.device(args.device)
 
@@ -193,7 +210,7 @@ def main(args):
     model = get_model(args)
     patch_size = model.encoder.patch_embed.patch_size
     print("Patch size = %s" % str(patch_size))
-    args.window_size = (args.num_frames // 2, args.input_size // patch_size[0], args.input_size // patch_size[1])
+    args.window_size = (args.num_frames // args.tubelet_size, args.input_size // patch_size[0], args.input_size // patch_size[1])
     args.patch_size = patch_size
 
     # get datasets
@@ -301,13 +318,13 @@ def main(args):
         if 'pos_embed' in checkpoint_model:
             pos_embed_checkpoint = checkpoint_model['pos_embed']
             embedding_size = pos_embed_checkpoint.shape[-1] # channel dim
-            num_patches = model.patch_embed.num_patches #
-            num_extra_tokens = model.pos_embed.shape[-2] - num_patches # 0/1
+            num_patches = model.encoder.patch_embed.num_patches #
+            num_extra_tokens = model.encoder.pos_embed.shape[-2] - num_patches # 0/1
 
             # height (== width) for the checkpoint position embedding
-            orig_size = int(((pos_embed_checkpoint.shape[-2] - num_extra_tokens)//(args.num_frames // model.patch_embed.tubelet_size)) ** 0.5)
+            orig_size = int(((pos_embed_checkpoint.shape[-2] - num_extra_tokens)//(args.num_frames // model.encoder.patch_embed.tubelet_size)) ** 0.5)
             # height (== width) for the new position embedding
-            new_size = int((num_patches // (args.num_frames // model.patch_embed.tubelet_size) )** 0.5)
+            new_size = int((num_patches // (args.num_frames // model.encoder.patch_embed.tubelet_size) )** 0.5)
             # class_token and dist_token are kept unchanged
             if orig_size != new_size:
                 print("Position interpolate from %dx%d to %dx%d" % (orig_size, orig_size, new_size, new_size))
@@ -315,28 +332,35 @@ def main(args):
                 # only the position tokens are interpolated
                 pos_tokens = pos_embed_checkpoint[:, num_extra_tokens:]
                 # B, L, C -> BT, H, W, C -> BT, C, H, W
-                pos_tokens = pos_tokens.reshape(-1, args.num_frames // model.patch_embed.tubelet_size, orig_size, orig_size, embedding_size)
+                pos_tokens = pos_tokens.reshape(-1, args.num_frames // model.encoder.patch_embed.tubelet_size, orig_size, orig_size, embedding_size)
                 pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, embedding_size).permute(0, 3, 1, 2)
                 pos_tokens = torch.nn.functional.interpolate(
                     pos_tokens, size=(new_size, new_size), mode='bicubic', align_corners=False)
                 # BT, C, H, W -> BT, H, W, C ->  B, T, H, W, C
-                pos_tokens = pos_tokens.permute(0, 2, 3, 1).reshape(-1, args.num_frames // model.patch_embed.tubelet_size, new_size, new_size, embedding_size)
+                pos_tokens = pos_tokens.permute(0, 2, 3, 1).reshape(-1, args.num_frames // model.encoder.patch_embed.tubelet_size, new_size, new_size, embedding_size)
                 pos_tokens = pos_tokens.flatten(1, 3) # B, L, C
                 new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
                 checkpoint_model['pos_embed'] = new_pos_embed
 
                 new_dict = {}
 
-        # Only for fine-tune models
-        # new_dict = {}
-        # for k in checkpoint_model.keys():
-        #     if k.startswith("fc_norm"):
-        #         value = checkpoint_model[k]
-        #         k = k.replace("fc_norm", "norm")
-        #         new_dict[f"encoder.{k}"] = value
-        #     else:
-        #         new_dict[f"encoder.{k}"] = checkpoint_model[k]
-        # checkpoint_model = new_dict
+        # Only for fine-tune weights
+        new_dict = {}
+        for k in checkpoint_model.keys():
+            if k == "pos_embed":
+                value = checkpoint_model[k]
+                new_dict[f"encoder.{k}"] = value[:, 1:, :]
+            if k.startswith("patch_embed"):
+                value = checkpoint_model[k]
+                new_dict[f"encoder.{k}"] = value
+            if k.startswith("blocks."):
+                value = checkpoint_model[k]
+                new_dict[f"encoder.{k}"] = value
+            if k.startswith("fc_norm"):
+                value = checkpoint_model[k]
+                k = k.replace("fc_norm", "norm")
+                new_dict[f"encoder.{k}"] = value
+        checkpoint_model = new_dict
 
         utils.load_state_dict(model, checkpoint_model)
 
@@ -392,6 +416,7 @@ def main(args):
             smaller_loader.set_epoch(epoch)
         if log_writer is not None:
             log_writer.set_step(epoch * num_training_steps_per_epoch)
+        print("Prepared loaders and writer, set epoch")
         train_stats, grad_norms = train_one_epoch_double(
             model, larger_loader, smaller_loader,
             optimizer, device, epoch, loss_scaler,
@@ -401,6 +426,7 @@ def main(args):
             wd_schedule_values=wd_schedule_values,
             patch_size=patch_size[0],
             normlize_target=args.normlize_target,
+            tubelet_size=1
         )
 
         if utils.is_main_process():

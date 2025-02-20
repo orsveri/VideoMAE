@@ -1,3 +1,4 @@
+import os
 from bdd100k import VideoMAE_BDD100K
 
 class MockArgs:
@@ -16,7 +17,8 @@ dataset = VideoMAE_BDD100K(
     video_ext='mov',
     is_color=True,
     modality='rgb',
-    new_length=16,
+    new_length=8,
+    target_fps=5,
     new_step=4,
     transform=None,
     temporal_jitter=False,
@@ -31,14 +33,16 @@ print(f"\nLength of the dataset: {L}")
 clips = dataset.clips
 samples = dataset.dataset_samples
 
+os.makedirs("/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views_8frames_5fps/", exist_ok=True)
+
 print("Writing clips...")
-with open("/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views/all_clips", "w") as file:
+with open("/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views_8frames_5fps/all_clips.txt", "w") as file:
     for line in clips:
         file.write(line + "\n")
 print("\tClips done!")
 
 print("Writing samples...")
-with open("/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views/all_dataset_samples", "w") as file:
+with open("/gpfs/work3/0/tese0625/datasets/bdd100k_splits/prepared_views_8frames_5fps/all_dataset_samples.txt", "w") as file:
     for s in samples:
         file.write(f"{s[0]},{s[1]}\n")
 print("\tSamples done!")

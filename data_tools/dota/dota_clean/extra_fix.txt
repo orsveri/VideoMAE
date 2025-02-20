@@ -13,7 +13,7 @@ clip_name,old_anomaly_start_time,old_anomaly_end_time,new_anomaly_start_time,new
 (split into separate clips)
 
 ===============
-2 double range ("manual change" code to change labels):
+4 double range ("manual change" code to change labels):
 
 4OGV0AbV91U_004538,2.6,4.6,3.2,4.1
 4OGV0AbV91U_004538,2.6,4.6,5.3,7.2

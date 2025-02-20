@@ -81,6 +81,7 @@ class VideoMAE_BDD100K(VideoMAE):
         images = self._aug_frame(images, self.args)
 
         process_data, mask = self.transform((images, None)) # T*C,H,W
+
         process_data = process_data.view((self.new_length, 3) + process_data.size()[-2:]).transpose(0
                                                                                                     ,1)  # T*C,H,W -> T,C,H,W -> C,T,H,W
         return (process_data, mask)

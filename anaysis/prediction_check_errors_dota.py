@@ -38,7 +38,7 @@ print(f"Binary Cross-Entropy Loss (Builtin): {bce_loss_builtin.item()}")
 
 # "_fixttc" ?
 dota_anno_folder = "/gpfs/work3/0/tese0625/RiskNetData/DoTA_refined/dataset/annotations"
-predictions1 = "/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/other_models_results/full_results_DoTA/pred_full_best_model_dota.csv"
+predictions1 = "/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/other_models_results/min_results_DoTA/pred_min_best_model_dota.csv"
 clip_err_out = "err_report.csv"
 out_figures_dir = "err_report"
 epoch = -1

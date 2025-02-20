@@ -92,7 +92,7 @@ def get_args():
                         help='Color jitter factor (default: 0.4)')
     parser.add_argument('--num_sample', type=int, default=2,
                         help='Repeated_aug (default: 2)')
-    parser.add_argument('--aa', type=str, default='rand-m3-n3-mstd0.5-inc1', metavar='NAME',
+    parser.add_argument('--aa', type=str, default='rand-m6-n3-mstd0.5-inc1', metavar='NAME',
                         help='Use AutoAugment policy. "v0" or "original". " + "(default: rand-m7-n4-mstd0.5-inc1)'),
     parser.add_argument('--smoothing', type=float, default=0.1,
                         help='Label smoothing (default: 0.1)')
@@ -419,6 +419,7 @@ def main(args, ds_init):
                 break
         if checkpoint_model is None:
             checkpoint_model = checkpoint
+            
         state_dict = model.state_dict()
         for k in ['head.weight', 'head.bias']:
             if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:

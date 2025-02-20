@@ -155,8 +155,9 @@ def train_one_epoch(model: torch.nn.Module, data_loader: Iterable, optimizer: to
 def train_one_epoch_double(model: torch.nn.Module, data_loader1: Iterable, data_loader2: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler, max_norm: float = 0, patch_size: int = 16, 
                     normlize_target: bool = True, log_writer=None, lr_scheduler=None, start_steps=None,
-                    lr_schedule_values=None, wd_schedule_values=None):
+                    lr_schedule_values=None, wd_schedule_values=None, tubelet_size=2):
     model.train()
+    print("Model is in train mode")
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     metric_logger.add_meter('min_lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
@@ -181,6 +182,7 @@ def train_one_epoch_double(model: torch.nn.Module, data_loader1: Iterable, data_
         )):
         gc.collect()
         torch.cuda.empty_cache()
+
         # assign learning rate & weight decay for each step
         it = start_steps + step  # global training iteration
         if lr_schedule_values is not None or wd_schedule_values is not None:
@@ -196,7 +198,6 @@ def train_one_epoch_double(model: torch.nn.Module, data_loader1: Iterable, data_
         videos = torch.cat([videos1, videos2], dim=0).to(device, non_blocking=True)
         bool_masked_pos = torch.cat([mask1, mask2], dim=0).to(device, non_blocking=True).flatten(1).to(torch.bool)
 
-
         with torch.no_grad():
             # calculate the predict label
             mean = torch.as_tensor(IMAGENET_DEFAULT_MEAN).to(device)[None, :, None, None, None]
@@ -204,13 +205,13 @@ def train_one_epoch_double(model: torch.nn.Module, data_loader1: Iterable, data_
             unnorm_videos = videos * std + mean  # in [0, 1]
 
             if normlize_target:
-                videos_squeeze = rearrange(unnorm_videos, 'b c (t p0) (h p1) (w p2) -> b (t h w) (p0 p1 p2) c', p0=2, p1=patch_size, p2=patch_size)
+                videos_squeeze = rearrange(unnorm_videos, 'b c (t p0) (h p1) (w p2) -> b (t h w) (p0 p1 p2) c', p0=tubelet_size, p1=patch_size, p2=patch_size)
                 videos_norm = (videos_squeeze - videos_squeeze.mean(dim=-2, keepdim=True)
                     ) / (videos_squeeze.var(dim=-2, unbiased=True, keepdim=True).sqrt() + 1e-6)
                 # we find that the mean is about 0.48 and standard deviation is about 0.08.
                 videos_patch = rearrange(videos_norm, 'b n p c -> b n (p c)')
             else:
-                videos_patch = rearrange(unnorm_videos, 'b c (t p0) (h p1) (w p2) -> b (t h w) (p0 p1 p2 c)', p0=2, p1=patch_size, p2=patch_size)
+                videos_patch = rearrange(unnorm_videos, 'b c (t p0) (h p1) (w p2) -> b (t h w) (p0 p1 p2 c)', p0=tubelet_size, p1=patch_size, p2=patch_size)
 
             B, _, C = videos_patch.shape
             labels = videos_patch[bool_masked_pos].reshape(B, -1, C)

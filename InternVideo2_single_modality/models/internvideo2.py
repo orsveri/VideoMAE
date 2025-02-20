@@ -332,6 +332,41 @@ class PatchEmbed(nn.Module):
         x = x.flatten(3).permute(0, 2, 3, 1)  # B x C x T x HW => B x T x HW x C
         x = self.norm(x)
         return x
+    
+
+class PatchEmbed_VideoMAE(nn.Module):
+    """ 3D Image to Patch Embedding
+    """
+    
+    def __init__(
+            self, img_size=224, patch_size=16, in_chans=3, embed_dim=768, 
+            num_frames=8, tubelet_size=1, norm_layer=None
+        ):
+        super().__init__()
+        img_size = to_2tuple(img_size)
+        patch_size = to_2tuple(patch_size)
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.tubelet_size = tubelet_size
+        self.grid_size = (
+            num_frames // tubelet_size, 
+            img_size[0] // patch_size[0], 
+            img_size[1] // patch_size[1]
+        ) # (T, H, W)
+        self.num_patches = self.grid_size[0] * self.grid_size[1] * self.grid_size[2]
+        
+        self.proj = nn.Conv3d(
+            in_channels=in_chans, out_channels=embed_dim, 
+            kernel_size=(tubelet_size, patch_size[0], patch_size[1]), 
+            stride=(tubelet_size, patch_size[0], patch_size[1])
+        )
+        self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
+    
+    def forward(self, x):
+        x = self.proj(x)
+        x = x.flatten(2).transpose(1, 2)  # => B x THW x C
+        x = self.norm(x)
+        return x
 
 
 class InternVideo2(nn.Module):

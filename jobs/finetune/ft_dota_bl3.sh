@@ -5,7 +5,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu
 #SBATCH --cpus-per-task=18
-#SBATCH --time=40:00:00
+#SBATCH --time=00:05:00
 #SBATCH --output=jobs/job_outputs/ft_BL3_dota_%j.out
 
 # For H100 nodes:

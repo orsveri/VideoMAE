@@ -502,7 +502,7 @@ class VideoMAE_DADA2K(VideoMAE_BDD100K):
         with open(os.path.join(self.root, self.setting), 'r') as file:
             clip_names = [line.rstrip() for line in file]
         df = pd.read_csv(os.path.join(self.root, "annotation", "full_anno.csv"))
-        for clip in clip_names:
+        for clip in tqdm(clip_names, desc=" 1 | Gathering and checking clips"):
             clip_type, clip_subfolder = clip.split("/")
             row = df[(df["video"] == int(clip_subfolder)) & (df["type"] == int(clip_type))]
             info = f"clip: {clip}, type: {clip_type}, subfolder: {clip_subfolder}, rows found: {row}"
@@ -526,7 +526,7 @@ class VideoMAE_DADA2K(VideoMAE_BDD100K):
     def _prepare_views(self):
         dataset_sequences = []
         N = len(self.clips)
-        for i in tqdm(range(N), desc="Preparing views"):
+        for i in tqdm(range(N), desc=" 2 | Preparing views"):
             timesteps = self.clip_timesteps[i]
             sequences = self.sequencer.get_sequences(timesteps_nb=len(timesteps), input_frequency=self.fps)
             if sequences is None:
@@ -777,6 +777,8 @@ if __name__ == "__main__":
         )
         L = len(dataset)
         print(f"Dataset length: {L} for view step {dataset.new_step}")
+        print("Sample example:")
+        print(dataset.dataset_samples[0])
         exit(0)
 
 
@@ -806,10 +808,10 @@ if __name__ == "__main__":
 
     assert len(dataset.clips) == len(dataset.clip_timesteps)
 
-    print("views:")
+    print("clip timesteps:")
     print(dataset.clip_timesteps[:5])
 
-    os.makedirs("/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits", exist_ok=True)
+    os.makedirs("/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits", exist_ok=False)  # Don't want to rewrite
 
     print("Writing clips...")
     with open("/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/CAP-DATA/prepared_splits/training_clips.txt", "w") as f:

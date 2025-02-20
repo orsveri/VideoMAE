@@ -72,6 +72,7 @@ def get_args():
                         
     parser.add_argument('--normlize_target', default=True, type=bool,
                         help='normalized the target patch pixels')
+    parser.add_argument('--tubelet_size', type=int, default=2)
 
     # Optimizer parameters
     parser.add_argument('--opt', default='adamw', type=str, metavar='OPTIMIZER',
@@ -176,6 +177,9 @@ def get_model(args):
 
 
 def main(args):
+    #print("os environ")
+    #print(os.environ)
+
     utils.init_distributed_mode(args)
 
     print(args)
@@ -193,7 +197,7 @@ def main(args):
     model = get_model(args)
     patch_size = model.encoder.patch_embed.patch_size
     print("Patch size = %s" % str(patch_size))
-    args.window_size = (args.num_frames // 2, args.input_size // patch_size[0], args.input_size // patch_size[1])
+    args.window_size = (args.num_frames // args.tubelet_size, args.input_size // patch_size[0], args.input_size // patch_size[1])
     args.patch_size = patch_size
 
     # get datasets
@@ -327,16 +331,23 @@ def main(args):
 
                 new_dict = {}
 
-        # Only for fine-tune models
-        # new_dict = {}
-        # for k in checkpoint_model.keys():
-        #     if k.startswith("fc_norm"):
-        #         value = checkpoint_model[k]
-        #         k = k.replace("fc_norm", "norm")
-        #         new_dict[f"encoder.{k}"] = value
-        #     else:
-        #         new_dict[f"encoder.{k}"] = checkpoint_model[k]
-        # checkpoint_model = new_dict
+        # Only for fine-tune weights
+        new_dict = {}
+        for k in checkpoint_model.keys():
+            if k == "pos_embed":
+                value = checkpoint_model[k]
+                new_dict[f"encoder.{k}"] = value
+            if k.startswith("patch_embed"):
+                value = checkpoint_model[k]
+                new_dict[f"encoder.{k}"] = value
+            if k.startswith("blocks."):
+                value = checkpoint_model[k]
+                new_dict[f"encoder.{k}"] = value
+            if k.startswith("fc_norm"):
+                value = checkpoint_model[k]
+                k = k.replace("fc_norm", "norm")
+                new_dict[f"encoder.{k}"] = value
+        checkpoint_model = new_dict
 
         utils.load_state_dict(model, checkpoint_model)
 

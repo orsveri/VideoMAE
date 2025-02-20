@@ -44,7 +44,8 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     device: torch.device, epoch: int, loss_scaler, max_norm: float = 0,
                     model_ema: Optional[ModelEma] = None, mixup_fn: Optional[Mixup] = None, log_writer=None,
                     start_steps=None, lr_schedule_values=None, wd_schedule_values=None,
-                    num_training_steps_per_epoch=None, update_freq=None, with_ttc=False, smoothed_labels_for_loss=False):
+                    num_training_steps_per_epoch=None, update_freq=None, with_ttc=False, smoothed_labels_for_loss=False, 
+                    get_grad_norms=True):
     model.train(True)
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
@@ -139,7 +140,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         if loss_scaler is None:
             loss /= update_freq
             model.backward(loss)
-            grad_norms = utils.collect_grad_norms(model, num_layers=12, num_heads=6)
+            grad_norms = utils.collect_grad_norms(model, num_layers=12, num_heads=6) if get_grad_norms else None
             model.step()
 
             if (data_iter_step + 1) % update_freq == 0:
@@ -156,7 +157,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             grad_norm = loss_scaler(loss, optimizer, clip_grad=max_norm,
                                     parameters=model.parameters(), create_graph=is_second_order,
                                     update_grad=(data_iter_step + 1) % update_freq == 0)
-            grad_norms = utils.collect_grad_norms(model, num_layers=12, num_heads=6)
+            grad_norms = utils.collect_grad_norms(model, num_layers=12, num_heads=6) if get_grad_norms else None
             if (data_iter_step + 1) % update_freq == 0:
                 optimizer.zero_grad()
                 if model_ema is not None:
@@ -214,7 +215,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
             log_writer.set_step()
 
     # Calculate total metrics
-    if if_dist:
+    if if_dist and get_grad_norms:
         preds = gather_predictions_nontensor(preds, world_size=dist.get_world_size())
         labels = gather_predictions_nontensor(labels, world_size=dist.get_world_size())
         qkv_grad_norms = gather_predictions_nontensor(qkv_grad_norms, world_size=dist.get_world_size())
@@ -225,12 +226,15 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
         patch_embed_grad_norms = np.sum(patch_embed_grad_norms, axis=0)
     all_preds = torch.cat(preds, dim=0)
     all_labels = torch.cat(labels, dim=0)
-    assert np.max(qkv_grad_norms) > 0., "Point 1"
-    qkv_grad_norms = qkv_grad_norms / len(data_loader)
-    assert np.max(qkv_grad_norms) > 0., "Point 2"
-    proj_grad_norms = proj_grad_norms / len(data_loader)
-    patch_embed_grad_norms = patch_embed_grad_norms / len(data_loader)
-    grad_norms = {"qkv": qkv_grad_norms.copy(), "proj": proj_grad_norms.copy(), "patch_embed": patch_embed_grad_norms.copy()}
+    if get_grad_norms:
+        assert np.max(qkv_grad_norms) > 0., "Point 1"
+        qkv_grad_norms = qkv_grad_norms / len(data_loader)
+        assert np.max(qkv_grad_norms) > 0., "Point 2"
+        proj_grad_norms = proj_grad_norms / len(data_loader)
+        patch_embed_grad_norms = patch_embed_grad_norms / len(data_loader)
+        grad_norms = {"qkv": qkv_grad_norms.copy(), "proj": proj_grad_norms.copy(), "patch_embed": patch_embed_grad_norms.copy()}
+    else:
+        grad_norms = None
     my_metrics = {}
     metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(all_preds, all_labels)
     # Log them

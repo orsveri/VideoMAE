@@ -5,7 +5,7 @@
 #SBATCH --partition=staging
 #SBATCH --cpus-per-task=16
 #SBATCH --time=01:00:00
-#SBATCH --output=jobs/job_outputs/_dadapretrain_check__%j.out
+#SBATCH --output=jobs/job_outputs/VIVIT_prepare_CAPDATA_%j.out
 
 module load 2023
 module load Anaconda3/2023.07-2

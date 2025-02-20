@@ -11,7 +11,8 @@ from einops import rearrange
 
 from .pos_embed import get_3d_sincos_pos_embed, get_2d_sincos_pos_embed, get_1d_sincos_pos_embed
 from .flash_attention_class import FlashAttention
-from .internvideo2 import InternVideo2, Block, AttentionPoolingBlock, RMSNorm
+from .internvideo2 import Block, AttentionPoolingBlock, RMSNorm
+from .internvideo2 import PatchEmbed_VideoMAE
 from flash_attn.modules.mlp import FusedMLP
 from flash_attn.ops.rms_norm import DropoutAddRMSNorm
 
@@ -45,8 +46,6 @@ class iv2_PretrainVisionTransformerEncoder(nn.Module):
             use_fused_rmsnorm: bool = True,
             use_fused_mlp: bool = True,
             fused_mlp_heuristic: int = 1,
-            attn_pool_num_heads: int = 16,
-            clip_embed_dim: int = 768,
             layerscale_no_force_fp32: bool = False,
             num_frames: int = 8,
             tubelet_size: int = 1,
@@ -67,7 +66,7 @@ class iv2_PretrainVisionTransformerEncoder(nn.Module):
         else:
             norm_layer_for_blocks = partial(RMSNorm, eps=1e-6)
         self.norm_layer_for_blocks = norm_layer_for_blocks
-        self.patch_embed = PatchEmbed(
+        self.patch_embed = PatchEmbed_VideoMAE(
             img_size, patch_size, in_chans, embed_dim,
             num_frames=num_frames, tubelet_size=tubelet_size,
         )
@@ -85,7 +84,7 @@ class iv2_PretrainVisionTransformerEncoder(nn.Module):
             self.pos_embed_cls = nn.Parameter(torch.zeros(1, 1, embed_dim))
         else:
             print("Use joint position embedding")
-            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
         
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
         # choose which layer to use checkpoint
@@ -112,15 +111,16 @@ class iv2_PretrainVisionTransformerEncoder(nn.Module):
                   layerscale_no_force_fp32=layerscale_no_force_fp32,
                   use_fused_rmsnorm=use_fused_rmsnorm)
             for i in range(depth)])
-        self.clip_projector = AttentionPoolingBlock(
-            dim=embed_dim, num_heads=attn_pool_num_heads, qkv_bias=True, qk_scale=None,
-            drop=0., attn_drop=0., norm_layer=partial(nn.LayerNorm, eps=1e-5), out_dim=clip_embed_dim)
+        # We don't need aggregation when we try to reconstruct masked tokens
+        # self.clip_projector = AttentionPoolingBlock(
+        #     dim=embed_dim, num_heads=attn_pool_num_heads, qkv_bias=True, qk_scale=None,
+        #     drop=0., attn_drop=0., norm_layer=partial(nn.LayerNorm, eps=1e-5), out_dim=clip_embed_dim)
 
         self.norm =  norm_layer(embed_dim)
         self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
         self.init_pos_embed()
-        trunc_normal_(self.cls_token, std=.02)
+        #trunc_normal_(self.cls_token, std=.02)
         self.apply(self._init_weights)
         self.fix_init_weight()
 
@@ -146,7 +146,7 @@ class iv2_PretrainVisionTransformerEncoder(nn.Module):
                 self.pos_embed.shape[-1], 
                 self.patch_embed.grid_size[1], # height & weight
                 self.patch_embed.grid_size[0], # t_size
-                cls_token=True
+                cls_token=False
             )
             self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
@@ -187,6 +187,7 @@ class iv2_PretrainVisionTransformerEncoder(nn.Module):
 
         # add pos_embed
         if self.sep_pos_embed:
+            #print("form pos embed")
             pos_embed = self.pos_embed_spatial.repeat(
                 1, self.grid_size[0], 1
             ) + torch.repeat_interleave(
@@ -194,15 +195,10 @@ class iv2_PretrainVisionTransformerEncoder(nn.Module):
                 self.grid_size[1] * self.grid_size[2],
                 dim=1,
             )
-            pos_embed = torch.cat(
-                [
-                    self.pos_embed_cls.expand(pos_embed.shape[0], -1, -1),
-                    pos_embed,
-                ],
-                1,
-            )
         else:
+            #print("use existing pos embed")
             pos_embed = self.pos_embed
+
         x = x + pos_embed
 
         B, _, C = x.shape
@@ -213,12 +209,18 @@ class iv2_PretrainVisionTransformerEncoder(nn.Module):
             if isinstance(x_vis, tuple) and len(x_vis) == 2:
                 x_vis, residual = x_vis
             x_vis = blk(x_vis, residual=residual)
-        if isinstance(x, tuple) and len(x) == 2:
+        if isinstance(x_vis, tuple) and len(x_vis) == 2:
             x_vis, residual = x_vis
             if residual is not None:
                 x_vis = x_vis + residual
+
+        # print(f"After blocks, x_vis is: ", type(x_vis))
+        # if isinstance(x_vis, tuple):
+        #     print(len(x_vis), x_vis[0].shape, x_vis[1].shape)
+        # else:
+        #     print(x_vis.shape)
         
-        x_vis = self.clip_projector(x_vis)
+        #x_vis = self.clip_projector(x_vis)
 
         x_vis = self.norm(x_vis)
         return x_vis
@@ -234,13 +236,13 @@ class PretrainVideoMAEInternVideo2(nn.Module):
     """
     def __init__(self,
                  img_size=224, 
-                 patch_size=16, 
+                 patch_size=14, 
                  encoder_in_chans=3, 
                  encoder_num_classes=0, 
                  encoder_embed_dim=768, 
                  encoder_depth=12,
                  encoder_num_heads=12, 
-                 decoder_num_classes=1536, #  decoder_num_classes=768, 
+                 decoder_num_classes=588, #  decoder_num_classes=768, 
                  decoder_embed_dim=512, 
                  decoder_depth=8,
                  decoder_num_heads=8, 
@@ -254,7 +256,11 @@ class PretrainVideoMAEInternVideo2(nn.Module):
                  init_values=0.,
                  use_learnable_pos_emb=False,
                  use_checkpoint=False,
-                 tubelet_size=2,
+                 layerscale_no_force_fp32: bool = False,
+                 num_frames: int = 8,
+                 tubelet_size: int = 1,
+                 sep_pos_embed: bool = False,
+                 checkpoint_num: int = 0,
                  num_classes=0, # avoid the error from create_fn in timm
                  in_chans=0, # avoid the error from create_fn in timm
                  ):
@@ -277,7 +283,16 @@ class PretrainVideoMAEInternVideo2(nn.Module):
             init_values=init_values,
             tubelet_size=tubelet_size,
             use_checkpoint=use_checkpoint,
-            use_learnable_pos_emb=use_learnable_pos_emb)
+            #
+            use_flash_attn=True,
+            use_fused_rmsnorm=True,
+            use_fused_mlp=True,
+            fused_mlp_heuristic=1,
+            layerscale_no_force_fp32=layerscale_no_force_fp32,
+            num_frames=num_frames,
+            sep_pos_embed=sep_pos_embed,
+            checkpoint_num=checkpoint_num
+            )
 
         self.decoder = PretrainVisionTransformerDecoder(
             patch_size=patch_size, 
@@ -341,9 +356,10 @@ class PretrainVideoMAEInternVideo2(nn.Module):
 @register_model
 def pretrain_videomae_internvideo2_patch14_224(pretrained=False, **kwargs):
     model = PretrainVideoMAEInternVideo2(
-        img_size=224, patch_size=14, embed_dim=1408, 
-        depth=40, num_heads=16, mlp_ratio=48/11, 
-        attn_pool_num_heads=16, clip_embed_dim=768,
+        img_size=224, patch_size=14, 
+        encoder_embed_dim=384, encoder_depth=12, encoder_num_heads=6, encoder_num_classes=0, 
+        decoder_embed_dim=192, decoder_num_heads=3, decoder_num_classes=588, 
+        norm_layer=partial(nn.LayerNorm, eps=1e-6), mlp_ratio=4.0, # 48/11, 
         **kwargs
     )
     return model

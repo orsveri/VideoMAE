@@ -1,12 +1,12 @@
 #!/bin/bash
 
 #SBATCH --nodes=1
-#SBATCH --gpus-per-node=4
-#SBATCH --ntasks-per-node=4
+#SBATCH --gpus-per-node=1
+#SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu_h100
 #SBATCH --cpus-per-task=14
-#SBATCH --time=80:00:00
-#SBATCH --output=jobs/job_outputs/pretrain_double_%j.out
+#SBATCH --time=50:00:00
+#SBATCH --output=jobs/job_outputs/ft_dada_bl4_%j.out
 
 # For H100 nodes:
 #export NCCL_SOCKET_IFNAME="eno2np0"
@@ -38,39 +38,50 @@ conda activate /home/sorlova/anaconda3/envs/video
 cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 
 # Set the path to save checkpoints
-OUTPUT_DIR='logs/my_pretrain/bdd100k-dada2k_extra_pretrain_vits/from-k400_full_regular_b200x4_mask075'
+OUTPUT_DIR='/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/baselines/bl4/VITB_dada_lr5e_b56x1_dsampl1val3_ld06_aam6n3'
 # path to data set 
-DATA_PATH1='/scratch-nvme/ml-datasets/bdd100k/videos'
-DATA_PATH2='/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/DADA2K'
+DATA_PATH="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/DADA2K"
 # path to pretrain model
-MODEL_PATH='logs/pretrained/k400_vits/videomae_vits_k400_pretrain_ckpt.pth'
+MODEL_PATH='logs/pretrained/vivit/vivit-b-16x2-kinetics400_vidmae.pth'
 
 
 # nproc_per_node is the number of used GPUs
 # batch_size is set for one GPU
 # batch_size=16, nproc_per_node=2 => the effective batch_size is 32
-# srun python run_frame_finetuning.py \
-torchrun --nproc_per_node=4 \
-    run_mae_double_pretraining.py \
-    --data_set1 BDD100K \
-    --data_path1 ${DATA_PATH1} \
-    --sampling_rate1 16 \
-    --data_set2 DADA2K \
-    --data_path2 ${DATA_PATH2} \
-    --sampling_rate2 1 \
-    --mask_type tube \
-    --mask_ratio 0.75 \
-    --model pretrain_videomae_small_patch16_224 \
-    --from_ckpt ${MODEL_PATH} \
-    --decoder_depth 4 \
-    --batch_size 200 \
-    --num_frames 16 \
-    --opt adamw \
-    --opt_betas 0.9 0.95 \
-    --warmup_epochs 1 \
-    --epochs 5 \
-    --save_ckpt_freq 1 \
+
+# 2 hrs per epoch
+torchrun --nproc_per_node=1 \
+    run_frame_finetuning.py \
+    --model vit_base_patch16_224 \
+    --data_set DADA2K \
+    --loss crossentropy \
+    --nb_classes 2 \
+    --data_path ${DATA_PATH} \
+    --finetune ${MODEL_PATH} \
     --log_dir ${OUTPUT_DIR} \
     --output_dir ${OUTPUT_DIR} \
-    --lr 3e-4 \
-    --min_lr 1e-5 \
+    --batch_size 56 \
+    --num_sample 1 \
+    --input_size 224 \
+    --short_side_size 224 \
+    --save_ckpt_freq 1 \
+    --num_frames 16 \
+    --sampling_rate 1 \
+    --sampling_rate_val 3 \
+    --nb_samples_per_epoch 50000 \
+    --opt adamw \
+    --lr 5e-4 \
+    --min_lr 1e-6 \
+    --warmup_lr 1e-6 \
+    --warmup_epochs 5 \
+    --opt_betas 0.9 0.999 \
+    --weight_decay 0.05 \
+    --drop_path 0.2 \
+    --layer_decay 0.6 \
+    --aa rand-m6-n3-mstd0.5-inc1 \
+    --epochs 50 \
+    --test_num_segment 1 \
+    --test_num_crop 1 \
+    --dist_eval \
+    --enable_deepspeed \
+    --seed 42
