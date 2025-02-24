@@ -56,6 +56,9 @@ def get_args():
                         help="whether use seperable position embedding")
     parser.add_argument('--center_init', action='store_true',
                         help="center initlization for patch embedding")
+    parser.add_argument('--no_cls_in_ckpt', action='store_true',
+                        help="whether CLS token weights are present in the checkpoint or not")
+    parser.set_defaults(remove_cls_token=False)
 
     parser.add_argument('--fc_drop_rate', type=float, default=0.0, metavar='PCT',
                         help='Dropout rate (default: 0.)')
@@ -275,25 +278,25 @@ def main(args, ds_init):
     # "16_8": ["ft_after_pretrain/pt_bdd/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 8],
     # "16_13": ["ft_after_pretrain/pt_bdd/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 13]
     # }
-    experiment_dict = {
-    "9_5": ["baselines/bl3/9_dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 5],
-    "10_6": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 6],
-    "10_18": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 18],
-    "11": ["baselines/bl3/dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 3],
-    "12": ["baselines/bl3/dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 1],
-    }
-    exprmnt = str(args.eval_option)
-    assert exprmnt in experiment_dict
-    log_part, exp_ep = experiment_dict[exprmnt]
-    base_log_dir = os.path.join("logs", log_part)
-    out_dir = os.path.join(base_log_dir, f"eval_{args.data_set}_ckpt_{exp_ep}")
-    args.finetune = os.path.join(base_log_dir, f"checkpoint-{exp_ep}.pth")
-    args.log_dir = out_dir
-    args.output_dir = out_dir
-    assert os.path.exists(args.finetune)
+    # experiment_dict = {
+    # "9_5": ["baselines/bl3/9_dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 5],
+    # "10_6": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 6],
+    # "10_18": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 18],
+    # "11": ["baselines/bl3/dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 3],
+    # "12": ["baselines/bl3/dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 1],
+    # }
+    # exprmnt = str(args.eval_option)
+    # assert exprmnt in experiment_dict
+    # log_part, exp_ep = experiment_dict[exprmnt]
+    # base_log_dir = os.path.join("logs", log_part)
+    # out_dir = os.path.join(base_log_dir, f"eval_{args.data_set}_ckpt_{exp_ep}")
+    # args.finetune = os.path.join(base_log_dir, f"checkpoint-{exp_ep}.pth")
+    # args.log_dir = out_dir
+    # args.output_dir = out_dir
+    # assert os.path.exists(args.finetune)
 
-    if args.eval:
-        os.makedirs(args.output_dir, exist_ok=True)
+    # if args.eval:
+    #     os.makedirs(args.output_dir, exist_ok=True)
     # =========================
 
 
@@ -431,7 +434,7 @@ def main(args, ds_init):
         print("QKV_bias: set")
     else:
         print("QKV_bias: No qkv bias attribute!")
-        exit(0)
+        #exit(0)
 
     model = create_model(
         args.model,
@@ -450,8 +453,6 @@ def main(args, ds_init):
         layerscale_no_force_fp32=args.layerscale_no_force_fp32,
         qkv_bias=args.qkv_bias if hasattr(args, "qkv_bias") else False
     )
-
-    exit(0)
 
     patch_size = model.patch_embed.patch_size
     print("Patch size = %s" % str(patch_size))
@@ -520,7 +521,12 @@ def main(args, ds_init):
             pos_embed_checkpoint = checkpoint_model['pos_embed']
             embedding_size = pos_embed_checkpoint.shape[-1] # channel dim
             num_patches = model.patch_embed.num_patches # 
-            num_extra_tokens = model.pos_embed.shape[-2] - num_patches # 0/1
+            if args.no_cls_in_ckpt:
+                num_extra_tokens = 0
+            else:
+                num_extra_tokens = model.pos_embed.shape[-2] - num_patches # 0/1
+            print(f"model.pos_embed.shape[-2]: {model.pos_embed.shape[-2]}")
+            print(f"num_patches: {num_patches}")
 
             # we use 8 frames for pretraining
             orig_t_size = 8

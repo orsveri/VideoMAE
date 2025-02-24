@@ -1,3 +1,5 @@
+import sys
+import os
 import argparse
 import datetime
 import numpy as np
@@ -5,10 +7,12 @@ import time
 import torch
 import torch.backends.cudnn as cudnn
 import json
-import os
 from functools import partial
 from pathlib import Path
 from collections import OrderedDict
+
+root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(root_path)
 
 from mixup import Mixup
 from timm.models import create_model
@@ -18,12 +22,13 @@ from optim_factory import create_optimizer, get_parameter_groups, LayerDecayValu
 
 from datasets import build_dataset
 from datasets_frame import build_frame_dataset
-from engine_for_frame_finetuning import train_one_epoch, validation_one_epoch, final_test, merge
+from CycleCrash_code.cc_engine_for_frame_finetuning import train_one_epoch, validation_one_epoch, final_test, merge
 from utils import NativeScalerWithGradNormCount as NativeScaler
 from utils import  multiple_samples_collate
 import utils
 import modeling_finetune
 from CycleCrash_code.src.get_model import VideoEncoder
+from CycleCrash_code.src.get_model2 import VideoEncoder as VideoEncoder_no_permute
 
 
 def get_args():
@@ -34,7 +39,7 @@ def get_args():
     parser.add_argument('--save_ckpt_freq', default=100, type=int)
 
     # Model parameters
-    parser.add_argument('--model', default='vit_base_patch16_224', type=str, metavar='MODEL',
+    parser.add_argument('--model', default='VidNeXt', type=str, metavar='MODEL',
                         help='Name of model to train')
     parser.add_argument('--tubelet_size', type=int, default= 2)
     parser.add_argument('--input_size', default=224, type=int,
@@ -180,7 +185,7 @@ def get_args():
                         help='Perform evaluation only')
     parser.add_argument('--dist_eval', action='store_true', default=False,
                         help='Enabling distributed evaluation')
-    parser.add_argument('--num_workers', default=8, type=int)
+    parser.add_argument('--num_workers', default=12, type=int)
     parser.add_argument('--pin_mem', action='store_true',
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
@@ -343,12 +348,10 @@ def main(args, ds_init):
     else:
         data_loader_test = None
 
-    model = VideoEncoder(model_type=args.model, task_type='multiclass', num_classes=args.nb_classes, segment_length=args.num_frames)
-
-    patch_size = model.patch_embed.patch_size
-    print("Patch size = %s" % str(patch_size))
-    args.window_size = (args.num_frames // 2, args.input_size // patch_size[0], args.input_size // patch_size[1])
-    args.patch_size = patch_size
+    if args.model in ('slow_r50', 'r2plus1d_r50', 'x3d_xs', 'x3d_s', 'x3d_m'):
+        model = VideoEncoder_no_permute(model_type=args.model, task_type='multiclass', num_classes=2, segment_length_frames=args.num_frames)
+    else:
+        model = VideoEncoder(model_type=args.model, task_type='multiclass', num_classes=2, segment_length_frames=args.num_frames)
 
     if args.finetune:
         if args.finetune.startswith('https'):
@@ -356,61 +359,9 @@ def main(args, ds_init):
                 args.finetune, map_location='cpu', check_hash=True)
         else:
             checkpoint = torch.load(args.finetune, map_location='cpu')
-
-        checkpoint_model = checkpoint
-
-            pos_embed_checkpoint = checkpoint_model['pos_embed']
-            embedding_size = pos_embed_checkpoint.shape[-1] # channel dim
-            num_patches = model.patch_embed.num_patches # 
-            num_extra_tokens = model.pos_embed.shape[-2] - num_patches # 0/1
-
-            # height (== width) for the checkpoint position embedding 
-            orig_size = int(((pos_embed_checkpoint.shape[-2] - num_extra_tokens)//(args.num_frames // model.patch_embed.tubelet_size)) ** 0.5)
-            # height (== width) for the new position embedding
-            new_size = int((num_patches // (args.num_frames // model.patch_embed.tubelet_size) )** 0.5)
-            # class_token and dist_token are kept unchanged
-            if orig_size != new_size:
-                print("Position interpolate from %dx%d to %dx%d" % (orig_size, orig_size, new_size, new_size))
-                extra_tokens = pos_embed_checkpoint[:, :num_extra_tokens]
-                # only the position tokens are interpolated
-                pos_tokens = pos_embed_checkpoint[:, num_extra_tokens:]
-                # B, L, C -> BT, H, W, C -> BT, C, H, W
-                pos_tokens = pos_tokens.reshape(-1, args.num_frames // model.patch_embed.tubelet_size, orig_size, orig_size, embedding_size)
-                pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, embedding_size).permute(0, 3, 1, 2)
-                pos_tokens = torch.nn.functional.interpolate(
-                    pos_tokens, size=(new_size, new_size), mode='bicubic', align_corners=False)
-                # BT, C, H, W -> BT, H, W, C ->  B, T, H, W, C
-                pos_tokens = pos_tokens.permute(0, 2, 3, 1).reshape(-1, args.num_frames // model.patch_embed.tubelet_size, new_size, new_size, embedding_size) 
-                pos_tokens = pos_tokens.flatten(1, 3) # B, L, C
-                new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
-                checkpoint_model['pos_embed'] = new_pos_embed
-        # Maybe adapt
-        utils.load_state_dict(model, checkpoint_model, prefix=args.model_prefix)
+        utils.load_state_dict(model, checkpoint, prefix=args.model_prefix)
 
     model.to(device)
-
-    # # Freeze specific layers
-    if args.freeze_layers is not None:
-        if args.freeze_layers.startswith("first N blocks"):
-            n_blocks = int(args.freeze_layers.split(";")[1])
-            print(f"\nFreezing first N blocks: {n_blocks}")
-            # Freeze first N blocks
-            for name, param in model.named_parameters():
-                if "blocks" in name:
-                    layer_index = int(name.split(".")[1])
-                    if layer_index < n_blocks:
-                        # Skip freezing if it's a normalization or projection layer
-                        if "norm" in name:
-                            param.requires_grad = True
-                        else:
-                            param.requires_grad = False
-                    else:
-                        param.requires_grad = True
-                elif "patch_embed" in name: 
-                    param.requires_grad = False
-                else:
-                    # Keep other parameters outside "blocks" trainable
-                    param.requires_grad = True
 
     model_ema = None
     if args.model_ema:
@@ -430,26 +381,22 @@ def main(args, ds_init):
     if not args.eval:
         #total_batch_size = args.batch_size * args.update_freq * utils.get_world_size()
         # num_training_steps_per_epoch = len(dataset_train) // total_batch_size  # defined way above
-        args.lr = args.lr * total_batch_size / 256
-        args.min_lr = args.min_lr * total_batch_size / 256
-        args.warmup_lr = args.warmup_lr * total_batch_size / 256
+        args.lr = args.lr * total_batch_size / 32
+        args.min_lr = args.min_lr * total_batch_size / 32
+        args.warmup_lr = args.warmup_lr * total_batch_size / 32
         print("LR = %.8f" % args.lr)
         print("Batch size = %d" % total_batch_size)
         print("Update frequent = %d" % args.update_freq)
         print("Number of training examples = %d" % len(dataset_train))
         print("Number of training training per epoch = %d" % num_training_steps_per_epoch)
 
-    num_layers = model_without_ddp.get_num_layers()
-    if args.layer_decay < 1.0:
-        assigner = LayerDecayValueAssigner(list(args.layer_decay ** (num_layers + 1 - i) for i in range(num_layers + 2)))
-    else:
-        assigner = None
+
+    assigner = None
 
     if assigner is not None:
         print("Assigned values = %s" % str(assigner.values))
 
-    skip_weight_decay_list = model.no_weight_decay()
-    print("Skip weight decay list: ", skip_weight_decay_list)
+    skip_weight_decay_list = ()
 
     if args.enable_deepspeed:
         loss_scaler = None
@@ -461,8 +408,6 @@ def main(args, ds_init):
             args=args, model=model, model_parameters=optimizer_params, dist_init_required=not args.distributed,
         )
 
-        print("model.gradient_accumulation_steps() = %d" % model.gradient_accumulation_steps())
-        assert model.gradient_accumulation_steps() == args.update_freq
     else:
         if args.distributed:
             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
@@ -475,16 +420,10 @@ def main(args, ds_init):
         loss_scaler = NativeScaler()
 
     if not args.eval:
-        print("Use step level LR scheduler!")
-        lr_schedule_values = utils.cosine_scheduler(
-            args.lr, args.min_lr, args.epochs, num_training_steps_per_epoch,
-            warmup_epochs=args.warmup_epochs, warmup_steps=args.warmup_steps,
-        )
-        if args.weight_decay_end is None:
-            args.weight_decay_end = args.weight_decay
-        wd_schedule_values = utils.cosine_scheduler(
-            args.weight_decay, args.weight_decay_end, args.epochs, num_training_steps_per_epoch)
-        print("Max WD = %.7f, Min WD = %.7f" % (max(wd_schedule_values), min(wd_schedule_values)))
+        print("Use ReduceLROnPlateau scheduler!")
+        scheduler1 = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer.optimizer, mode='min', factor=0.5, patience=3, verbose=True
+            )
 
     mixup_fn = None
     # if mixup_fn is not None:
@@ -560,7 +499,7 @@ def main(args, ds_init):
             model, criterion, data_loader_train, optimizer,
             device, epoch, loss_scaler, args.clip_grad, model_ema, mixup_fn,
             log_writer=log_writer, start_steps=epoch * num_training_steps_per_epoch,
-            lr_schedule_values=lr_schedule_values, wd_schedule_values=wd_schedule_values,
+            lr_schedule_values=None, wd_schedule_values=None,
             num_training_steps_per_epoch=num_training_steps_per_epoch, update_freq=args.update_freq,
             with_ttc=with_ttc, get_grad_norms=False
         )
@@ -600,6 +539,7 @@ def main(args, ds_init):
                     args=args, epoch=epoch, model_without_ddp=model_without_ddp)
         if data_loader_val is not None:
             test_stats_, test_stats, plots = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
+            scheduler1.step(test_stats_['loss'])
             print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats_['acc']:.1f}%")
             # if max_accuracy < test_stats["auroc"]:
             #     max_accuracy = test_stats["auroc"]

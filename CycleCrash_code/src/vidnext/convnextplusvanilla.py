@@ -22,7 +22,7 @@ class Model(nn.Module):
         self.output_attention = False #configs.output_attention
 
         # Embedding
-        filename = '.\\vidnext\\config.yaml'
+        filename = 'CycleCrash_code/src/vidnext/config.yaml' # '.\\vidnext\\config.yaml'
         config = parse_yaml_file(filename)
         spatial_output_dim = config.get('output_spatial_dim', {}).get('convnext')
         dropout_cfg = config.get('dropout_cfg', {})

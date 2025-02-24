@@ -84,12 +84,7 @@ class VideoEncoder(nn.Module):
 
 
     def forward(self, x):
-        # depug printout
-        #print(f"x original shape: ", x.shape)
-        x = x.permute(0, 2, 1, 3, 4)
-        #print(f"x shape for VidNeXt: ", x.shape)
-
-        x = self.vid_trans(x)       
+        x = self.vid_trans(x)      
         x = self.bn1(x)
         x = F.relu(x)
         x = self.fc1(x)

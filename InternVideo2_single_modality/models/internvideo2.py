@@ -448,7 +448,7 @@ class InternVideo2(nn.Module):
             print("QKV2: Set")
         else:
             print("QKV2: Not set")
-            exit(0)
+            #exit(0)
 
         self.blocks = nn.ModuleList([
             Block(embed_dim, num_heads, mlp_ratio, qkv_bias=qkv_bias,

@@ -289,6 +289,8 @@ def main(args, ds_init):
     global_rank = utils.get_rank()
 
     dataset_train = None
+    dataset_val = None
+    dataset_test = None
     if not args.eval:
         dataset_train, args.nb_classes = build_frame_dataset(is_train=True, test_mode=False, args=args)
 
@@ -311,26 +313,28 @@ def main(args, ds_init):
             num_training_steps_per_epoch = len(dataset_train) // total_batch_size
         print("Sampler_train = %s" % str(sampler_train))
 
-    if args.disable_eval_during_finetuning:
-        dataset_val = None
-    else:
-        dataset_val, _ = build_frame_dataset(is_train=False, test_mode=False, args=args)
-    dataset_test, _ = build_frame_dataset(is_train=False, test_mode=True, args=args)
+        if args.disable_eval_during_finetuning:
+            dataset_val = None
+        else:
+            dataset_val, _ = build_frame_dataset(is_train=False, test_mode=False, args=args)
 
-    print(f"dset lengths: train {len(dataset_train) if dataset_train is not None else '<not used>'}, "
-          f"val {len(dataset_val) if dataset_train is not None else '<not used>'}")
-
-    if args.dist_eval:
-        if len(dataset_val) % num_tasks != 0:
-            print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
-                    'This will slightly alter validation results as extra duplicate entries are added to achieve '
-                    'equal num of samples per-process.')
-        sampler_val = torch.utils.data.DistributedSampler(
-            dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False, drop_last=False)
+        if args.dist_eval:
+            if len(dataset_val) % num_tasks != 0:
+                print('Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. '
+                        'This will slightly alter validation results as extra duplicate entries are added to achieve '
+                        'equal num of samples per-process.')
+            sampler_val = torch.utils.data.DistributedSampler(
+                dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=False, drop_last=False)
+        
+    if args.dist_eval and args.eval:
+        dataset_test, _ = build_frame_dataset(is_train=False, test_mode=True, args=args)
         sampler_test = torch.utils.data.DistributedSampler(
             dataset_test, num_replicas=num_tasks, rank=global_rank, shuffle=False, drop_last=False)
     else:
         sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+
+    print(f"dset lengths: train {len(dataset_train) if dataset_train is not None else '<not used>'}, "
+          f"val {len(dataset_val) if dataset_val is not None else '<not used>'}")
 
     if global_rank == 0 and args.log_dir is not None and not args.eval:
         os.makedirs(args.log_dir, exist_ok=True)

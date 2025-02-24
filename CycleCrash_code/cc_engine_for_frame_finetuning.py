@@ -293,7 +293,9 @@ def validation_one_epoch(data_loader, model, device, with_ttc=False, smoothed_la
             targets_loss = target
 
         # compute output
-        with torch.cuda.amp.autocast():
+        # Cannot use autocast because our model contains batchnorm
+        with torch.cuda.amp.autocast(enabled=False):
+            videos = videos.half()  # instead, just do this..
             output = model(videos)
             if with_ttc:
                 loss = criterion(output, targets_loss, ttc)
