@@ -98,6 +98,7 @@ class FrameClsDataset_DADA(Dataset):
         clip_binary_labels = []
         clip_cat_labels = []
         clip_ego = []
+        clip_night = []
         clip_toa = []
         clip_ttc = []
         clip_acc = []
@@ -129,8 +130,9 @@ class FrameClsDataset_DADA(Dataset):
                 binary_labels = [1 if st <= t <= en else 0 for t in timesteps]
             else:
                 binary_labels = [0 for t in timesteps]
-            cat_labels = [l*clip_type for l in binary_labels]
+            cat_labels = [l*int(clip_type) for l in binary_labels]
             if_ego = clip_type in self.ego_categories
+            if_night = int(row["light(day,night)1-2"]) == 2
             toa = int(row["accident frame"])
             ttc = compute_time_vector(binary_labels, fps=self.orig_fps, TT=self.ttc_TT, TA=self.ttc_TA)
             smoothed_labels = smooth_labels(labels=torch.Tensor(binary_labels), time_vector=ttc,
@@ -140,6 +142,7 @@ class FrameClsDataset_DADA(Dataset):
             clip_binary_labels.append(binary_labels)
             clip_cat_labels.append(cat_labels)
             clip_ego.append(if_ego)
+            clip_night.append(if_night)
             clip_toa.append(toa)
             clip_ttc.append(ttc)
             clip_acc.append(if_acc_video)
@@ -157,6 +160,7 @@ class FrameClsDataset_DADA(Dataset):
         self.clip_bin_labels = clip_binary_labels
         self.clip_cat_labels = clip_cat_labels
         self.clip_ego = clip_ego
+        self.clip_night = clip_night
         self.clip_toa = clip_toa
         self.clip_ttc = clip_ttc
         self.clip_smoothed_labels = clip_smoothed_labels

@@ -4,9 +4,9 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu
-#SBATCH --cpus-per-task=14
+#SBATCH --cpus-per-task=16
 #SBATCH --time=50:00:00
-#SBATCH --output=jobs/job_outputs/ft_dota_bl2_%j.out
+#SBATCH --output=jobs_outs_ftpt/205_bl2_dota_%j.out
 
 # For H100 nodes:
 #export NCCL_SOCKET_IFNAME="eno2np0"
@@ -16,8 +16,8 @@
 module load 2023
 module load Anaconda3/2023.07-2
 
-export OMP_NUM_THREADS=16
-export MASTER_PORT=12345
+export OMP_NUM_THREADS=15
+export MASTER_PORT=12305
 export MASTER_ADDR=$(hostname)
 export CUDA_HOME=/sw/arch/RHEL8/EB_production/2023/software/CUDA/12.1.1/
 
@@ -38,11 +38,12 @@ conda activate /home/sorlova/anaconda3/envs/video
 cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 
 # Set the path to save checkpoints
-OUTPUT_DIR='/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/baselines/bl2/dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3'
+OUTPUT_DIR='/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/ft_after_pretrain/bl2/dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3'
 # path to data set 
 DATA_PATH='/gpfs/work3/0/tese0625/RiskNetData/DoTA_refined'
 # path to pretrain model
-MODEL_PATH='logs/pretrained/VideoMAE2_distill/videomae_vits_k710_distill_from_giant.pth'
+# 'logs/pretrained/VideoMAE2_distill/videomae_vits_k710_distill_from_giant.pth'
+MODEL_PATH='/gpfs/work3/0/tese0625/VideoMAE_results/train_logs/my_pretrain/bl2_vits/bdd-capdata_lightcrop_b200x4_mask075/checkpoint-11.pth'
 
 
 # nproc_per_node is the number of used GPUs
@@ -56,6 +57,7 @@ torchrun --nproc_per_node=1 \
     --data_set DoTA \
     --loss crossentropy \
     --nb_classes 2 \
+    --tubelet_size 2 \
     --data_path ${DATA_PATH} \
     --finetune ${MODEL_PATH} \
     --log_dir ${OUTPUT_DIR} \
@@ -69,6 +71,7 @@ torchrun --nproc_per_node=1 \
     --sampling_rate 1 \
     --sampling_rate_val 2 \
     --nb_samples_per_epoch 50000 \
+    --num_workers 12 \
     --opt adamw \
     --lr 1e-3 \
     --min_lr 1e-6 \

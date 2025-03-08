@@ -222,30 +222,10 @@ def get_args():
 def main(args, ds_init):
     # EVAL ===============
     # experiment_dict = {
-    # "1": ["baselines/bl1/lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 16],
-    # "2_14": ["baselines/bl1/dotaH_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 14],
-    # "2_15": ["baselines/bl1/dotaH_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 15],
-    # "3a_15": ["baselines/bl1/dada_lr5e4_b56x1_dsampl1val2_ld06_aam6n3", 15],
-    # "3b_7": ["baselines/bl1/dada_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 7],
-    # "3b_14": ["baselines/bl1/dada_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 14],
-    # "4_9": ["baselines/bl1/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 9],
-    # "5_5": ["baselines/bl2/lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 5],
-    # "6_8": ["baselines/bl2/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 8],
-    # "7_4": ["baselines/bl2/dada_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 4],
-    # "8_5": ["baselines/bl2/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 5],
-    # "13_14": ["ft_after_pretrain/pt_bdd/dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 14],
-    # "14_15": ["ft_after_pretrain/pt_bdd/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 15],
-    # "15_8": ["ft_after_pretrain/pt_bdd/dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 8],
-    # "16_8": ["ft_after_pretrain/pt_bdd/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 8],
-    # "16_13": ["ft_after_pretrain/pt_bdd/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 13]
-    # }
-    # another bunch of logs
-    # experiment_dict = {
-    # "9_5": ["baselines/bl3/9_dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 5],
-    # "10_6": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 6],
-    # "10_18": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 18],
-    # "11": ["baselines/bl3/dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 3],
-    # "12": ["baselines/bl3/dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 1],
+    # "205": ["ft_after_pretrain/bl2/205_dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 16],
+    # "206": ["ft_after_pretrain/bl2/206_dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 14],
+    # "207": ["ft_after_pretrain/bl2/207_dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 15],
+    # "208": ["ft_after_pretrain/bl2/208_dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 8]
     # }
     # exprmnt = str(args.eval_option)
     # assert exprmnt in experiment_dict
@@ -636,6 +616,7 @@ def main(args, ds_init):
     start_time = time.time()
     max_accuracy = 0.0
     max_ap = 0.0
+    max_acc = 0.0
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
@@ -675,37 +656,43 @@ def main(args, ds_init):
             #
             [log_writer.writer.add_figure(f"train_plots/train_{k}", fig, global_step=epoch) for k, fig in plots.items()]
         # save last model with all the parameters so we can continue from it
-        utils.save_model(
-                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                    loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema, epoch_name="last"
-                    )
-        if args.output_dir and args.save_ckpt:
-            if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
-                utils.save_model_weights_only(
-                    args=args, epoch=epoch, model_without_ddp=model_without_ddp)
+        # utils.save_model(
+        #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+        #             loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema, epoch_name="last"
+        #             )
+        # if args.output_dir and args.save_ckpt:
+        #     if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
+        #         utils.save_model_weights_only(
+        #             args=args, epoch=epoch, model_without_ddp=model_without_ddp)
         if data_loader_val is not None:
             test_stats_, test_stats, plots = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
             print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats_['acc']:.1f}%")
-            # if max_accuracy < test_stats["auroc"]:
-            #     max_accuracy = test_stats["auroc"]
-            #     if args.output_dir and args.save_ckpt:
-            #         utils.save_model(
-            #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-            #             loss_scaler=loss_scaler, epoch="bestauroc", model_ema=model_ema)
-            # if max_ap < test_stats["ap"]:
-            #     max_ap = test_stats["ap"]
-            #     if args.output_dir and args.save_ckpt:
-            #         utils.save_model(
-            #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-            #             loss_scaler=loss_scaler, epoch="bestap", model_ema=model_ema)
-            #
+            if max_accuracy < test_stats["auroc"]:
+                max_accuracy = test_stats["auroc"]
+                if args.output_dir and args.save_ckpt:
+                    utils.save_model(
+                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                        loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema, epoch_name="bestauroc")
+            if max_ap < test_stats["ap"]:
+                max_ap = test_stats["ap"]
+                if args.output_dir and args.save_ckpt:
+                    utils.save_model(
+                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                        loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema, epoch_name="bestap")
+            if max_acc < test_stats["metr_acc"]:
+                max_acc = test_stats["metr_acc"]
+                if args.output_dir and args.save_ckpt:
+                    utils.save_model(
+                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                        loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema, epoch_name="bestacc")
+            
             # epoch_save_list = (1, 3, 4, 5, 7, 15)
             # if epoch in epoch_save_list:
             #     utils.save_model(
             #         args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
             #         loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema
             #     )
-            #
+            
             print(f'Max accuracy: {max_accuracy:.2f}%')
             if log_writer is not None:
                 log_writer.update(val_acc=test_stats_['acc'], head="val", step=epoch)

@@ -556,8 +556,9 @@ def compute_video(lst):
     return [pred, top1, int(label)]
 
 
-def calculate_metrics(preds, labels):
-    preds = torch.nn.functional.softmax(preds, dim=1)
+def calculate_metrics(preds, labels, do_softmax=True):
+    if do_softmax:
+        preds = torch.nn.functional.softmax(preds, dim=1)
     values = preds[:, 1]
     _, preds = torch.max(preds, 1)
     metr_acc = torchmetrics.functional.accuracy(preds=preds, target=labels, task="binary").item()

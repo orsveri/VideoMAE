@@ -4,9 +4,9 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu_h100
-#SBATCH --cpus-per-task=14
-#SBATCH --time=00:25:00
-#SBATCH --output=jobs/job_outputs/eval_dota_bl1_%j.out
+#SBATCH --cpus-per-task=16
+#SBATCH --time=01:00:00
+#SBATCH --output=jobs_outs/eval_dota_c4_%j.out
 
 # For H100 nodes:
 #export NCCL_SOCKET_IFNAME="eno2np0"
@@ -16,9 +16,7 @@
 module load 2023
 module load Anaconda3/2023.07-2
 
-export OMP_NUM_THREADS=16
-export MASTER_PORT=12345
-export MASTER_ADDR=$(hostname)
+export OMP_NUM_THREADS=15
 export CUDA_HOME=/sw/arch/RHEL8/EB_production/2023/software/CUDA/12.1.1/
 
 __conda_setup="$('/sw/arch/RHEL8/EB_production/2023/software/Anaconda3/2023.07-2/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
@@ -38,12 +36,11 @@ conda activate /home/sorlova/anaconda3/envs/video
 cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 
 # Set the path to save checkpoints
-#OUTPUT_DIR='logs/my_pretrain_ft_dota/bdd100k_extra_pretrain_vits/from-k400_full_regular_b200x4_mask075-session2_newaug'
-OUTPUT_DIR='logs/my_pretrain_ft_dota/bl1_vits_k400_vidmae/oldaug_videomae_vits_k400_1/ckpt-3-dota-res'
+OUTPUT_DIR='/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/ft_after_pretrain/bl1k700/C4_dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3/eval_DoTA_ckpt_bestap'
 # path to data set 
 DATA_PATH='/gpfs/work3/0/tese0625/RiskNetData/DoTA_refined'
 # path to pretrain model
-MODEL_PATH='logs/my_pretrain_ft_dota/bl1_vits_k400_vidmae/oldaug_videomae_vits_k400_1/checkpoint-3.pth'
+MODEL_PATH='/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/ft_after_pretrain/bl1k700/C4_dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3/checkpoint-bestap/mp_rank_00_model_states.pt'
 
 
 # nproc_per_node is the number of used GPUs
@@ -72,7 +69,7 @@ torchrun --nproc_per_node=1 \
     --view_fps 10 \
     --opt adamw \
     --lr 5e-4 \
-    --opt_betas 0.9 0.999 \7 \
+    --opt_betas 0.9 0.999 \
     --epochs 20 \
     --test_num_segment 1 \
     --test_num_crop 1 \

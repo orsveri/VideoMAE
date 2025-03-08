@@ -393,7 +393,8 @@ def final_test(data_loader, model, device, preds_file, stats_file, plot_dir=None
             targets_loss = target
 
         # compute output
-        with torch.cuda.amp.autocast():
+        with torch.cuda.amp.autocast(enabled=False):
+            videos = videos.half()
             output = model(videos)
             if with_ttc:
                 loss = criterion(output, targets_loss, ttc)

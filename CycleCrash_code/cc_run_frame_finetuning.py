@@ -359,6 +359,9 @@ def main(args, ds_init):
                 args.finetune, map_location='cpu', check_hash=True)
         else:
             checkpoint = torch.load(args.finetune, map_location='cpu')
+        
+        if "module" in checkpoint:
+            checkpoint = checkpoint["module"]
         utils.load_state_dict(model, checkpoint, prefix=args.model_prefix)
 
     model.to(device)
@@ -489,6 +492,7 @@ def main(args, ds_init):
     start_time = time.time()
     max_accuracy = 0.0
     max_ap = 0.0
+    max_acc = 0.0
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
@@ -529,30 +533,36 @@ def main(args, ds_init):
             #
             [log_writer.writer.add_figure(f"train_plots/train_{k}", fig, global_step=epoch) for k, fig in plots.items()]
         # save last model with all the parameters so we can continue from it
-        utils.save_model(
-                    args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                    loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema, epoch_name="last"
-                    )
-        if args.output_dir and args.save_ckpt:
-            if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
-                utils.save_model_weights_only(
-                    args=args, epoch=epoch, model_without_ddp=model_without_ddp)
+        # utils.save_model(
+        #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+        #             loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema, epoch_name="last"
+        #             )
+        # if args.output_dir and args.save_ckpt:
+        #     if (epoch + 1) % args.save_ckpt_freq == 0 or epoch + 1 == args.epochs:
+        #         utils.save_model_weights_only(
+        #             args=args, epoch=epoch, model_without_ddp=model_without_ddp)
         if data_loader_val is not None:
             test_stats_, test_stats, plots = validation_one_epoch(data_loader_val, model, device, with_ttc=with_ttc)
             scheduler1.step(test_stats_['loss'])
             print(f"Accuracy of the network on the {len(dataset_val)} val videos: {test_stats_['acc']:.1f}%")
-            # if max_accuracy < test_stats["auroc"]:
-            #     max_accuracy = test_stats["auroc"]
-            #     if args.output_dir and args.save_ckpt:
-            #         utils.save_model(
-            #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-            #             loss_scaler=loss_scaler, epoch="bestauroc", model_ema=model_ema)
-            # if max_ap < test_stats["ap"]:
-            #     max_ap = test_stats["ap"]
-            #     if args.output_dir and args.save_ckpt:
-            #         utils.save_model(
-            #             args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-            #             loss_scaler=loss_scaler, epoch="bestap", model_ema=model_ema)
+            if max_accuracy < test_stats["auroc"]:
+                max_accuracy = test_stats["auroc"]
+                if args.output_dir and args.save_ckpt:
+                    utils.save_model(
+                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                        loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema, epoch_name="bestauroc")
+            if max_ap < test_stats["ap"]:
+                max_ap = test_stats["ap"]
+                if args.output_dir and args.save_ckpt:
+                    utils.save_model(
+                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                        loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema, epoch_name="bestap")
+            if max_acc < test_stats["metr_acc"]:
+                max_acc = test_stats["metr_acc"]
+                if args.output_dir and args.save_ckpt:
+                    utils.save_model(
+                        args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
+                        loss_scaler=loss_scaler, epoch=epoch, model_ema=model_ema, epoch_name="bestacc")
             #
             # epoch_save_list = (1, 3, 4, 5, 7, 15)
             # if epoch in epoch_save_list:

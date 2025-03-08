@@ -5,7 +5,7 @@
 #SBATCH --partition=staging
 #SBATCH --cpus-per-task=16
 #SBATCH --time=01:00:00
-#SBATCH --output=jobs/job_outputs/VIVIT_prepare_CAPDATA_%j.out
+#SBATCH --output=jobs_outs_eval/GROUP_eval_dota_%j.out
 
 module load 2023
 module load Anaconda3/2023.07-2
@@ -30,7 +30,10 @@ cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 #python kinetics.py
 #python bdd100k.py
 #python dota.py
-python dada.py
+#python dada.py
 #python data_tools/bdd100k/prepare_anno.py
 #python shift.py
 #python data_tools/dada/halfsplit.py
+#python data_tools/dada/anno_for_predictions.py
+#python data_tools/dota/anno_for_predictions.py
+python anaysis/metrics_by_categories.py

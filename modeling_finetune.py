@@ -354,11 +354,3 @@ def vit_huge_patch16_224(pretrained=False, **kwargs):
     model.default_cfg = _cfg()
     return model
 
-# from decoders.dpt import DPTVideoMAE
-# @register_model
-# def dpt_vit_small_patch16_224(pretrained=False, **kwargs):
-#     model = DPTVideoMAE(
-#         patch_size=16, embed_dim=384, depth=12, num_heads=6, mlp_ratio=4, qkv_bias=True,
-#         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
-#     model.default_cfg = _cfg()
-#     return model

@@ -11,6 +11,7 @@ root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(root_path)
 
 from engine_for_frame_finetuning import calculate_metrics
+#from anaysis.metrics import calculate_metrics, calculate_MORE_metrics
 
 
 def get_pos_and_neg_probs():
@@ -38,11 +39,11 @@ print(f"Binary Cross-Entropy Loss (Builtin): {bce_loss_builtin.item()}")
 
 # "_fixttc" ?
 dota_anno_folder = "/gpfs/work3/0/tese0625/RiskNetData/DoTA_refined/dataset/annotations"
-predictions1 = "/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/other_models_results/min_results_DoTA/pred_min_best_model_dota.csv"
+predictions1 = "/gpfs/work3/0/tese0625/VideoMAE_results/comparison/MOVAD/ft_DADA2K_ep702/eval_DoTA_ckpt_702/predictions.csv"
 clip_err_out = "err_report.csv"
 out_figures_dir = "err_report"
-epoch = -1
-tag = "_FULL" # "_train" or ""
+epoch = 16
+tag = "_#1" # "_train" or ""
 show_hists = True
 save_plots = True
 
@@ -52,7 +53,7 @@ save_plots = True
 #     loss_tag = "Focal"
 # else:
 #     raise ValueError("Impossible loss directory!")
-loss_tag = "train CAPDATA FULL, test DoTA"
+loss_tag = "DoTA->DoTA after extra pretrain"
 
 
 # ======================================================
@@ -60,9 +61,16 @@ predictions = predictions1.format(epoch, tag)
 clip_err_out = os.path.join(os.path.dirname(predictions), clip_err_out)
 out_figures_dir = os.path.join(os.path.dirname(predictions), out_figures_dir)
 df = pd.read_csv(predictions)
-logits = torch.tensor(df[["logits_safe", "logits_risk"]].to_numpy())
-probs = softmax(logits, dim=-1)
-probs = probs[:, 1].numpy()
+if False: # "movad" in predictions1.lower():
+    do_softmax = False
+    logits = df[["logits_safe", "logits_risk"]].to_numpy()
+    probs = logits[:, 1].copy()
+    logits = torch.tensor(logits)
+else:
+    do_softmax = True
+    logits = torch.tensor(df[["logits_safe", "logits_risk"]].to_numpy())
+    probs = softmax(logits, dim=-1)
+    probs = probs[:, 1].numpy()
 labels = df["label"].to_numpy().astype(bool)
 
 pos_preds = probs[labels]
@@ -70,7 +78,7 @@ neg_preds = probs[~labels]
 
 
 # save stats
-metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(logits, torch.tensor(labels))
+metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(logits, torch.tensor(labels), do_softmax=do_softmax)
 lines = ["\n===================================",
          f"mAP: {ap}, auroc: {auroc}, acc: {metr_acc}",
          f"P@0.5: {precision}, R@0.5: {recall}, F1@0.5: {f1}",

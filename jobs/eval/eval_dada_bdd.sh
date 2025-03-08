@@ -72,7 +72,7 @@ torchrun --nproc_per_node=1 \
     --view_fps 10 \
     --opt adamw \
     --lr 5e-4 \
-    --opt_betas 0.9 0.999 \7 \
+    --opt_betas 0.9 0.999 \
     --epochs 20 \
     --test_num_segment 1 \
     --test_num_crop 1 \

@@ -14,7 +14,7 @@
 export NCCL_SOCKET_IFNAME="eno2np0"
 
 export CUDA_HOME=/sw/arch/RHEL8/EB_production/2023/software/CUDA/12.1.1/
-export CUDA_LAUNCH_BLOCKING=1
+#export CUDA_LAUNCH_BLOCKING=1
 
 module load 2023
 module load Anaconda3/2023.07-2

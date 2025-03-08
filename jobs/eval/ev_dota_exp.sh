@@ -5,8 +5,8 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu_h100
 #SBATCH --cpus-per-task=14
-#SBATCH --time=00:30:00
-#SBATCH --output=jobs/jobs_outs/eval_dota_exp8_5_%j.out
+#SBATCH --time=00:40:00
+#SBATCH --output=jobs_outs/eval_207_dota_%j.out
 
 # For H100 nodes:
 #export NCCL_SOCKET_IFNAME="eno2np0"
@@ -17,8 +17,8 @@ module load 2023
 module load Anaconda3/2023.07-2
 
 export OMP_NUM_THREADS=10
-export MASTER_PORT=12543
-export MASTER_ADDR=$(hostname)
+# export MASTER_PORT=12543
+#export MASTER_ADDR=$(hostname)
 export CUDA_HOME=/sw/arch/RHEL8/EB_production/2023/software/CUDA/12.1.1/
 
 __conda_setup="$('/sw/arch/RHEL8/EB_production/2023/software/Anaconda3/2023.07-2/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
@@ -54,7 +54,7 @@ MODEL_PATH='logs/my_pretrain_ft_dota/bdd100k_extra_pretrain_vits/from-k400_full_
 torchrun --nproc_per_node=1 \
     run_frame_finetuning.py \
     --eval \
-    --eval_option 9_5 \
+    --eval_option 207 \
     --model vit_small_patch16_224 \
     --data_set DoTA \
     --loss crossentropy \

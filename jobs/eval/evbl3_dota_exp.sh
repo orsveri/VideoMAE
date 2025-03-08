@@ -5,8 +5,8 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu_h100
 #SBATCH --cpus-per-task=14
-#SBATCH --time=00:30:00
-#SBATCH --output=jobs_outs/eval_dota_exp11_%j.out
+#SBATCH --time=00:40:00
+#SBATCH --output=jobs_outs/211_%j.out
 
 # For H100 nodes:
 #export NCCL_SOCKET_IFNAME="eno2np0"
@@ -17,8 +17,6 @@ module load 2023
 module load Anaconda3/2023.07-2
 
 export OMP_NUM_THREADS=10
-export MASTER_PORT=12543
-export MASTER_ADDR=$(hostname)
 export CUDA_HOME=/sw/arch/RHEL8/EB_production/2023/software/CUDA/12.1.1/
 
 __conda_setup="$('/sw/arch/RHEL8/EB_production/2023/software/Anaconda3/2023.07-2/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
@@ -37,6 +35,9 @@ conda activate /home/sorlova/anaconda3/envs/video
 
 cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 
+# export MASTER_ADDR=$(srun --nodes=1 --ntasks=1 hostname --ip-address)
+export MASTER_PORT=31313
+
 # Set the path to save checkpoints
 #OUTPUT_DIR='logs/my_pretrain_ft_dota/bdd100k_extra_pretrain_vits/from-k400_full_regular_b200x4_mask075-session2_newaug'
 OUTPUT_DIR='logs/my_pretrain_ft_dota/bdd100k_extra_pretrain_vits/from-k400_full_regular_b200x4_mask075-session2_newaug/ckpt-4-dota-res'
@@ -51,10 +52,9 @@ MODEL_PATH='logs/my_pretrain_ft_dota/bdd100k_extra_pretrain_vits/from-k400_full_
 # batch_size=16, nproc_per_node=2 => the effective batch_size is 32
 
 # 2 hrs per epoch
-torchrun --nproc_per_node=1 \
-    iv2_sm_run_frame_finetuning.py \
+torchrun --nproc_per_node=1 iv2_sm_run_frame_finetuning.py \
     --eval \
-    --eval_option 11 \
+    --eval_option 212_11 \
     --model internvideo2_small_patch14_224 \
     --data_set DoTA \
     --loss crossentropy \

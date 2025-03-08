@@ -1,9 +1,12 @@
 logs/
+anaysis/plots
 .idea
 __pycache__
 decoders/__pycache__
 job_outputs
 jobs/job_outputs
 jobs_outs
+jobs_cc
+jobs_outs_eval
 jobs_outs_ftpt
 

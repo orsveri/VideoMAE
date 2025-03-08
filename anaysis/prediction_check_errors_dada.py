@@ -38,7 +38,7 @@ bce_loss_builtin = torch.nn.functional.binary_cross_entropy(prediction_clipped, 
 print(f"Binary Cross-Entropy Loss (Builtin): {bce_loss_builtin.item()}")
 
 dada_anno_folder = "/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/DADA2K/annotation/full_anno.csv"
-predictions1 = "logs/other_models_results/min_results_DADA2K/pred_min_best_model_dada2k.csv"
+predictions1 = "/gpfs/work3/0/tese0625/VideoMAE_results/comparison/MOVAD/ft_DADA2K_ep702/eval_DADA2K_ckpt_702/predictions.csv"
 clip_err_out = "err_report.csv"
 out_figures_dir = "err_report"
 epoch = -1
@@ -59,16 +59,23 @@ predictions = predictions1.format(epoch, tag)
 clip_err_out = os.path.join(os.path.dirname(predictions), clip_err_out)
 out_figures_dir = os.path.join(os.path.dirname(predictions), out_figures_dir)
 df = pd.read_csv(predictions)
-logits = torch.tensor(df[["logits_safe", "logits_risk"]].to_numpy())
-probs = softmax(logits, dim=-1)
-probs = probs[:, 1].numpy()
+if False: # "movad" in predictions1.lower():
+    do_softmax = False
+    logits = df[["logits_safe", "logits_risk"]].to_numpy()
+    probs = logits[:, 1].copy()
+    logits = torch.tensor(logits)
+else:
+    do_softmax = True
+    logits = torch.tensor(df[["logits_safe", "logits_risk"]].to_numpy())
+    probs = softmax(logits, dim=-1)
+    probs = probs[:, 1].numpy()
 labels = df["label"].to_numpy().astype(bool)
 
 pos_preds = probs[labels]
 neg_preds = probs[~labels]
 
 # save stats
-metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(logits, torch.tensor(labels))
+metr_acc, recall, precision, f1, confmat, auroc, ap, pr_curve, roc_curve = calculate_metrics(logits, torch.tensor(labels), do_softmax=do_softmax)
 lines = ["\n===================================",
          f"mAP: {ap}, auroc: {auroc}, acc: {metr_acc}",
          f"P@0.5: {precision}, R@0.5: {recall}, F1@0.5: {f1}",
@@ -83,7 +90,7 @@ if save_plots:
     os.makedirs(out_figures_dir, exist_ok=True)
 
 if show_hists:
-    plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(8, 6), num="probs histogram")
     plt.hist([neg_preds, pos_preds], bins=101, cumulative=False, edgecolor='black', label=['neg', 'pos'])
     plt.xlabel('Probability')
     plt.ylabel('Count')
@@ -91,8 +98,10 @@ if show_hists:
     plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Histogram ')
     plt.legend()
     plt.show()
+    if save_plots:
+        fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
-    plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(8, 6), num="probs histogram cumulative")
     plt.hist(neg_preds, bins=101, cumulative=1, edgecolor='black', alpha=0.7, label='neg')
     plt.hist(pos_preds, bins=101, cumulative=-1, edgecolor='black', alpha=0.7, label='pos')
     plt.xlabel('Probability')
@@ -100,6 +109,8 @@ if show_hists:
     plt.title(f'{tag} [{loss_tag}, epoch {epoch}] Cumulative histogram')
     plt.legend()
     plt.show()
+    if save_plots:
+        fig.savefig(os.path.join(out_figures_dir, f"{fig.get_label()}.png".replace(" ", "_")))
 
 df["probs_anomaly"] = probs
 # Get misclassifications

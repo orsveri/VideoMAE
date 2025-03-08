@@ -260,43 +260,27 @@ def get_args():
 
 def main(args, ds_init):
     # EVAL ===============
-    # experiment_dict = {
-    # "1": ["baselines/bl1/lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 16],
-    # "2_14": ["baselines/bl1/dotaH_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 14],
-    # "2_15": ["baselines/bl1/dotaH_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 15],
-    # "3a_15": ["baselines/bl1/dada_lr5e4_b56x1_dsampl1val2_ld06_aam6n3", 15],
-    # "3b_7": ["baselines/bl1/dada_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 7],
-    # "3b_14": ["baselines/bl1/dada_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 14],
-    # "4_9": ["baselines/bl1/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 9],
-    # "5_5": ["baselines/bl2/lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 5],
-    # "6_8": ["baselines/bl2/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 8],
-    # "7_4": ["baselines/bl2/dada_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 4],
-    # "8_5": ["baselines/bl2/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 5],
-    # "13_14": ["ft_after_pretrain/pt_bdd/dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 14],
-    # "14_15": ["ft_after_pretrain/pt_bdd/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 15],
-    # "15_8": ["ft_after_pretrain/pt_bdd/dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 8],
-    # "16_8": ["ft_after_pretrain/pt_bdd/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 8],
-    # "16_13": ["ft_after_pretrain/pt_bdd/dadaH_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 13]
-    # }
-    # experiment_dict = {
-    # "9_5": ["baselines/bl3/9_dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 5],
-    # "10_6": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 6],
-    # "10_18": ["baselines/bl3/dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 18],
-    # "11": ["baselines/bl3/dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 3],
-    # "12": ["baselines/bl3/dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 1],
-    # }
-    # exprmnt = str(args.eval_option)
-    # assert exprmnt in experiment_dict
-    # log_part, exp_ep = experiment_dict[exprmnt]
-    # base_log_dir = os.path.join("logs", log_part)
-    # out_dir = os.path.join(base_log_dir, f"eval_{args.data_set}_ckpt_{exp_ep}")
-    # args.finetune = os.path.join(base_log_dir, f"checkpoint-{exp_ep}.pth")
-    # args.log_dir = out_dir
-    # args.output_dir = out_dir
-    # assert os.path.exists(args.finetune)
+    experiment_dict = {
+    "209": ["/gpfs/work3/0/tese0625/VideoMAE_results/train_logs/ft_after_pretrain/bl3/209_dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3", 25],
+    "210": ["/gpfs/work3/0/tese0625/VideoMAE_results/train_logs/ft_after_pretrain/bl3/210_dotah_lr1e3_b28x2_dsampl1val2_ld06_aam6n3", 14],
+    "211": ["/gpfs/work3/0/tese0625/VideoMAE_results/train_logs/ft_after_pretrain/bl3/211_dada_lr1e3_b56x1_dsampl1val3_ld06_aam6n3", 11],
+    "212_4": ["/gpfs/work3/0/tese0625/VideoMAE_results/train_logs/ft_after_pretrain/bl3/212_dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 4],
+    "212_7": ["/gpfs/work3/0/tese0625/VideoMAE_results/train_logs/ft_after_pretrain/bl3/212_dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 7],
+    "212_11": ["/gpfs/work3/0/tese0625/VideoMAE_results/train_logs/ft_after_pretrain/bl3/212_dadah_lr1e3_b28x2_dsampl1val3_ld06_aam6n3", 11],
+    }
+    exprmnt = str(args.eval_option)
+    assert exprmnt in experiment_dict
+    log_part, exp_ep = experiment_dict[exprmnt]
+    #base_log_dir = os.path.join("logs", log_part)
+    base_log_dir = log_part
+    out_dir = os.path.join(base_log_dir, f"eval_{args.data_set}_ckpt_{exp_ep}")
+    args.finetune = os.path.join(base_log_dir, f"checkpoint-{exp_ep}.pth")
+    args.log_dir = out_dir
+    args.output_dir = out_dir
+    assert os.path.exists(args.finetune)
 
-    # if args.eval:
-    #     os.makedirs(args.output_dir, exist_ok=True)
+    if args.eval:
+        os.makedirs(args.output_dir, exist_ok=True)
     # =========================
 
 

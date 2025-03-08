@@ -4,9 +4,9 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu_h100
-#SBATCH --cpus-per-task=14
+#SBATCH --cpus-per-task=16
 #SBATCH --time=50:00:00
-#SBATCH --output=jobs/job_outputs/ft_dada_bl4_%j.out
+#SBATCH --output=jobs_outs_ftpt/215_bl4_dada_%j.out
 
 # For H100 nodes:
 #export NCCL_SOCKET_IFNAME="eno2np0"
@@ -16,8 +16,8 @@
 module load 2023
 module load Anaconda3/2023.07-2
 
-export OMP_NUM_THREADS=16
-export MASTER_PORT=12345
+export OMP_NUM_THREADS=15
+export MASTER_PORT=12215
 export MASTER_ADDR=$(hostname)
 export CUDA_HOME=/sw/arch/RHEL8/EB_production/2023/software/CUDA/12.1.1/
 
@@ -38,11 +38,11 @@ conda activate /home/sorlova/anaconda3/envs/video
 cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 
 # Set the path to save checkpoints
-OUTPUT_DIR='/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/baselines/bl4/VITB_dada_lr5e_b56x1_dsampl1val3_ld06_aam6n3'
+OUTPUT_DIR='/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/ft_after_pretrain/bl4/VITB_dada_lr5e_b56x1_dsampl1val3_ld06_aam6n3'
 # path to data set 
 DATA_PATH="/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/DADA2K"
-# path to pretrain model
-MODEL_PATH='logs/pretrained/vivit/vivit-b-16x2-kinetics400_vidmae.pth'
+# 'logs/pretrained/vivit/vivit-b-16x2-kinetics400_vidmae.pth'
+MODEL_PATH='logs/my_pretrain/bl4_vivit_bdd-capdata_lightcrop_b200x4_mask075/checkpoint-11.pth'
 
 
 # nproc_per_node is the number of used GPUs
@@ -69,6 +69,7 @@ torchrun --nproc_per_node=1 \
     --sampling_rate 1 \
     --sampling_rate_val 3 \
     --nb_samples_per_epoch 50000 \
+    --num_workers 12 \
     --opt adamw \
     --lr 5e-4 \
     --min_lr 1e-6 \

@@ -5,11 +5,11 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu_h100
 #SBATCH --cpus-per-task=14
-#SBATCH --time=01:10:00
-#SBATCH --output=jobs_outs/eval_dada_exp12_%j.out
+#SBATCH --time=01:20:00
+#SBATCH --output=jobs_outs/212-11_%j.out
 
 # For H100 nodes:
-#export NCCL_SOCKET_IFNAME="eno2np0"
+export NCCL_SOCKET_IFNAME="eno2np0"
 #export NCCL_DEBUG=INFO
 #export CUDA_LAUNCH_BLOCKING=1
 
@@ -17,8 +17,6 @@ module load 2023
 module load Anaconda3/2023.07-2
 
 export OMP_NUM_THREADS=16
-export MASTER_PORT=12541
-export MASTER_ADDR=$(hostname)
 export CUDA_HOME=/sw/arch/RHEL8/EB_production/2023/software/CUDA/12.1.1/
 
 __conda_setup="$('/sw/arch/RHEL8/EB_production/2023/software/Anaconda3/2023.07-2/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
@@ -44,6 +42,8 @@ DATA_PATH='/gpfs/work3/0/tese0625/RiskNetData/LOTVS-DADA/DADA2K'
 # path to pretrain model
 MODEL_PATH='logs/my_pretrain_ft_dota/bl1_vits_k400_vidmae/oldaug_videomae_vits_k400_1/checkpoint-3.pth'
 
+#export MASTER_PORT=21567
+#export MASTER_ADDR=$(hostname)
 
 # nproc_per_node is the number of used GPUs
 # batch_size is set for one GPU
@@ -53,7 +53,7 @@ MODEL_PATH='logs/my_pretrain_ft_dota/bl1_vits_k400_vidmae/oldaug_videomae_vits_k
 torchrun --nproc_per_node=1 \
     iv2_sm_run_frame_finetuning.py \
     --eval \
-    --eval_option 12 \
+    --eval_option 212_11 \
     --model internvideo2_small_patch14_224 \
     --data_set DADA2K \
     --loss crossentropy \
@@ -73,7 +73,7 @@ torchrun --nproc_per_node=1 \
     --view_fps 10 \
     --opt adamw \
     --lr 5e-4 \
-    --opt_betas 0.9 0.999 \7 \
+    --opt_betas 0.9 0.999 \
     --epochs 20 \
     --test_num_segment 1 \
     --test_num_crop 1 \

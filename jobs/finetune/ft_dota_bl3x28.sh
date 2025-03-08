@@ -75,7 +75,8 @@ torchrun --nproc_per_node=1 \
     --drop_path 0.1 \
     --head_drop_path 0.1 \
     --fc_drop_rate 0.0 \
-    --layer_decay 0.75 \
+    --layer_decay 0.6 \
+    --aa rand-m6-n3-mstd0.5-inc1 \
     --layer_scale_init_value 1e-5 \
     --opt adamw \
     --opt_betas 0.9 0.999 \

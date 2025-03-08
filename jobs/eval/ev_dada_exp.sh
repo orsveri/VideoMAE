@@ -5,8 +5,8 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu_h100
 #SBATCH --cpus-per-task=14
-#SBATCH --time=01:10:00
-#SBATCH --output=jobs_outs/eval_dada_exp9_5_%j.out
+#SBATCH --time=02:00:00
+#SBATCH --output=jobs_outs/eval_206_dada_%j.out
 
 # For H100 nodes:
 #export NCCL_SOCKET_IFNAME="eno2np0"
@@ -17,7 +17,7 @@ module load 2023
 module load Anaconda3/2023.07-2
 
 export OMP_NUM_THREADS=16
-export MASTER_PORT=12541
+# export MASTER_PORT=12541
 export MASTER_ADDR=$(hostname)
 export CUDA_HOME=/sw/arch/RHEL8/EB_production/2023/software/CUDA/12.1.1/
 
@@ -53,7 +53,7 @@ MODEL_PATH='logs/my_pretrain_ft_dota/bl1_vits_k400_vidmae/oldaug_videomae_vits_k
 torchrun --nproc_per_node=1 \
     run_frame_finetuning.py \
     --eval \
-    --eval_option 9_5 \
+    --eval_option 206 \
     --model vit_small_patch16_224 \
     --data_set DADA2K \
     --loss crossentropy \
@@ -72,7 +72,7 @@ torchrun --nproc_per_node=1 \
     --view_fps 10 \
     --opt adamw \
     --lr 5e-4 \
-    --opt_betas 0.9 0.999 \7 \
+    --opt_betas 0.9 0.999 \
     --epochs 20 \
     --test_num_segment 1 \
     --test_num_crop 1 \

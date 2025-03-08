@@ -217,7 +217,7 @@ def build_frame_dataset(is_train, test_mode, args):
         elif test_mode is True:
             mode = 'test'
             anno_path = 'val_split.txt'
-            sampling_rate = args.sampling_rate_val if args.sampling_rate_val > 0 else args.sampling_rate
+            sampling_rate = 1 # args.sampling_rate_val if args.sampling_rate_val > 0 else args.sampling_rate
         else:  
             mode = 'validation'
             anno_path = 'val_split.txt'
