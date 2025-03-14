@@ -7,6 +7,8 @@ from timm.models.layers import drop_path, to_2tuple, trunc_normal_
 from timm.models.registry import register_model
 import torch.utils.checkpoint as checkpoint
 
+from flash_attention_class import FlashAttention
+
 
 def _cfg(url='', **kwargs):
     return {
@@ -55,7 +57,7 @@ class Mlp(nn.Module):
 class Attention(nn.Module):
     def __init__(
             self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0.,
-            proj_drop=0., attn_head_dim=None):
+            proj_drop=0., attn_head_dim=None, use_flash_attn=False, causal=False):
         super().__init__()
         self.num_heads = num_heads
         head_dim = dim // num_heads
@@ -76,7 +78,12 @@ class Attention(nn.Module):
         self.proj = nn.Linear(all_head_dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x):
+        self.use_flash_attn = use_flash_attn
+        if use_flash_attn:
+            self.causal = causal
+            self.inner_attn = FlashAttention(attention_dropout=attn_drop)
+
+    def _naive_attn(self, x):
         B, N, C = x.shape
         qkv_bias = None
         if self.q_bias is not None:
@@ -97,18 +104,46 @@ class Attention(nn.Module):
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
+    
+    def _flash_attn(self, x):
+        B, N, _ = x.shape
+        qkv_bias = None
+        if self.q_bias is not None:
+            # Combine biases as in Code B
+            qkv_bias = torch.cat((
+                self.q_bias, 
+                torch.zeros_like(self.v_bias, requires_grad=False), 
+                self.v_bias
+            ))
+        # Compute qkv using the same linear layer as vanilla
+        qkv = F.linear(x, weight=self.qkv.weight, bias=qkv_bias)
+        # Reshape to [B, N, 3, num_heads, -1]
+        qkv = qkv.reshape(B, N, 3, self.num_heads, -1)
+        # Alternatively, you could also use rearrange:
+        # qkv = rearrange(qkv, "b s (three h d) -> b s three h d", three=3, h=self.num_heads)
+        
+        # Call flash attention module (flash op expects the qkv in a similar shape)
+        context, _ = self.inner_attn(qkv, causal=self.causal)
+        # context is expected to be of shape [B, N, num_heads, d]
+        x = self.proj(context.view(B, N, -1))
+        x = self.proj_drop(x)
+        return x
+    
+    def forward(self, x):
+        x = self._naive_attn(x) if not self.use_flash_attn else self._flash_attn(x)
+        return x
 
 
 class Block(nn.Module):
 
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., init_values=None, act_layer=nn.GELU, norm_layer=nn.LayerNorm,
-                 attn_head_dim=None):
+                 attn_head_dim=None, use_flash_attn=False):
         super().__init__()
         self.norm1 = norm_layer(dim)
         self.attn = Attention(
             dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
-            attn_drop=attn_drop, proj_drop=drop, attn_head_dim=attn_head_dim)
+            attn_drop=attn_drop, proj_drop=drop, attn_head_dim=attn_head_dim, use_flash_attn=use_flash_attn, causal=False)
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -191,6 +226,7 @@ class VisionTransformer(nn.Module):
                  norm_layer=nn.LayerNorm, 
                  init_values=0.,
                  use_learnable_pos_emb=False, 
+                 use_flash_attn=True,
                  init_scale=0.,
                  all_frames=16,
                  tubelet_size=2,
@@ -205,6 +241,9 @@ class VisionTransformer(nn.Module):
         num_patches = self.patch_embed.num_patches
         self.use_checkpoint = use_checkpoint
 
+        if use_flash_attn:
+            print("Using Flash Attention!")
+
         if use_learnable_pos_emb:
             self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
         else:
@@ -213,13 +252,12 @@ class VisionTransformer(nn.Module):
 
         self.pos_drop = nn.Dropout(p=drop_rate)
 
-
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]  # stochastic depth decay rule
         self.blocks = nn.ModuleList([
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer,
-                init_values=init_values)
+                init_values=init_values, use_flash_attn=use_flash_attn)
             for i in range(depth)])
         assert final_reduction in ("fc_norm", "cls", 'none', None)
         self.final_reduction = final_reduction

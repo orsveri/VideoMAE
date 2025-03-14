@@ -47,6 +47,7 @@ def get_args():
                         help='Attention dropout rate (default: 0.)')
     parser.add_argument('--drop_path', type=float, default=0.1, metavar='PCT',
                         help='Drop path rate (default: 0.1)')
+    parser.add_argument('--no_flash_attn', action='store_true', default=False)
 
     parser.add_argument('--disable_eval_during_finetuning', action='store_true', default=False)
     parser.add_argument('--model_ema', action='store_true', default=False)
@@ -380,6 +381,7 @@ def main(args, ds_init):
         use_checkpoint=args.use_checkpoint,
         final_reduction=args.final_reduction,
         init_scale=args.init_scale,
+        use_flash_attn = not args.no_flash_attn
     )
 
     patch_size = model.patch_embed.patch_size

@@ -29,7 +29,7 @@ class PretrainVisionTransformerEncoder(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=0, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
                  drop_path_rate=0., norm_layer=nn.LayerNorm, init_values=None, tubelet_size=2, use_checkpoint=False,
-                 use_learnable_pos_emb=False):
+                 use_learnable_pos_emb=False, use_flash_attn=True):
         super().__init__()
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
@@ -51,7 +51,7 @@ class PretrainVisionTransformerEncoder(nn.Module):
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer,
-                init_values=init_values)
+                init_values=init_values, use_flash_attn=use_flash_attn)
             for i in range(depth)])
         self.norm =  norm_layer(embed_dim)
         self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
@@ -114,7 +114,8 @@ class PretrainVisionTransformerDecoder(nn.Module):
     """
     def __init__(self, patch_size=16, num_classes=768, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4.,
                  qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0.,
-                 norm_layer=nn.LayerNorm, init_values=None, num_patches=196, tubelet_size=2, use_checkpoint=False
+                 norm_layer=nn.LayerNorm, init_values=None, num_patches=196, tubelet_size=2, use_checkpoint=False,
+                 use_flash_attn=True
                  ):
         super().__init__()
         self.num_classes = num_classes
@@ -129,7 +130,7 @@ class PretrainVisionTransformerDecoder(nn.Module):
             Block(
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer,
-                init_values=init_values)
+                init_values=init_values, use_flash_attn=use_flash_attn)
             for i in range(depth)])
         self.norm =  norm_layer(embed_dim)
         self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
@@ -199,6 +200,7 @@ class PretrainVisionTransformer(nn.Module):
                  norm_layer=nn.LayerNorm, 
                  init_values=0.,
                  use_learnable_pos_emb=False,
+                 use_flash_attn=True,
                  use_checkpoint=False,
                  tubelet_size=2,
                  num_classes=0, # avoid the error from create_fn in timm
@@ -223,7 +225,8 @@ class PretrainVisionTransformer(nn.Module):
             init_values=init_values,
             tubelet_size=tubelet_size,
             use_checkpoint=use_checkpoint,
-            use_learnable_pos_emb=use_learnable_pos_emb)
+            use_learnable_pos_emb=use_learnable_pos_emb,
+            use_flash_attn=use_flash_attn)
 
         self.decoder = PretrainVisionTransformerDecoder(
             patch_size=patch_size, 
@@ -241,7 +244,8 @@ class PretrainVisionTransformer(nn.Module):
             norm_layer=norm_layer, 
             init_values=init_values,
             tubelet_size=tubelet_size,
-            use_checkpoint=use_checkpoint)
+            use_checkpoint=use_checkpoint,
+            use_flash_attn=use_flash_attn)
 
         self.encoder_to_decoder = nn.Linear(encoder_embed_dim, decoder_embed_dim, bias=False)
 
