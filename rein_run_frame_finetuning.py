@@ -23,6 +23,7 @@ from utils import NativeScalerWithGradNormCount as NativeScaler
 from utils import  multiple_samples_collate
 import utils
 import modeling_finetune
+from adaptations import videomae1_reins
 
 
 def get_args():
@@ -52,6 +53,13 @@ def get_args():
     parser.add_argument('--model_ema', action='store_true', default=False)
     parser.add_argument('--model_ema_decay', type=float, default=0.9999, help='')
     parser.add_argument('--model_ema_force_cpu', action='store_true', default=False, help='')
+    # Rein
+    parser.add_argument('--rein_link_token_to_query', action='store_true', default=False, help='')
+    parser.add_argument('--rein_token_length', type=int, default=100)
+    parser.add_argument('--rein_fuse_method', default='simple_concat',
+                        choices=['simple_concat', "cross_attention"],
+                        type=str, help="how to combine Rein's learned tokens and features")
+
 
     # Optimizer parameters
     parser.add_argument('--loss', default='crossentropy',
@@ -380,6 +388,9 @@ def main(args, ds_init):
         use_checkpoint=args.use_checkpoint,
         final_reduction=args.final_reduction,
         init_scale=args.init_scale,
+        rein_link_token_to_query=args.rein_link_token_to_query,
+        rein_token_length=args.rein_token_length,
+        rein_fuse_method=args.rein_fuse_method
     )
 
     patch_size = model.patch_embed.patch_size
@@ -455,7 +466,7 @@ def main(args, ds_init):
 
     model.to(device)
 
-    # # Freeze specific layers
+    # Freeze everything except reins 
     if args.freeze_layers is not None:
         if args.freeze_layers.startswith("first N blocks"):
             n_blocks = int(args.freeze_layers.split(";")[1])
@@ -477,15 +488,6 @@ def main(args, ds_init):
                 else:
                     # Keep other parameters outside "blocks" trainable
                     param.requires_grad = True
-        elif args.freeze_layers == "linprob":
-            print(f"\n ==== Linear probing ====")
-            for name, param in model.named_parameters():
-                if "head" in name:
-                    param.requires_grad = True
-                else:
-                    # Keep backbone frozen
-                    param.requires_grad = False
-
 
     model_ema = None
     if args.model_ema:
@@ -638,13 +640,12 @@ def main(args, ds_init):
             log_writer=log_writer, start_steps=epoch * num_training_steps_per_epoch,
             lr_schedule_values=lr_schedule_values, wd_schedule_values=wd_schedule_values,
             num_training_steps_per_epoch=num_training_steps_per_epoch, update_freq=args.update_freq,
-            with_ttc=with_ttc, get_grad_norms=False if args.freeze_layers is not None else True
+            with_ttc=with_ttc, get_grad_norms=False
         )
         # save grad norms
-        if grad_norms is not None:
-            assert np.max(grad_norms["qkv"]) > 0., "grad_norms < 0!! "
-            print(f"Epoch {epoch}, max grad_norms qkv: {np.max(grad_norms["qkv"]):.2f}")
-            np.savez(os.path.join(grad_norm_dir, f"gradnorm_ep{epoch}.npz"), **grad_norms)
+        # assert np.max(grad_norms["qkv"]) > 0., "grad_norms < 0!! "
+        # print(f"Epoch {epoch}, max grad_norms qkv: {np.max(grad_norms["qkv"]):.2f}")
+        # np.savez(os.path.join(grad_norm_dir, f"gradnorm_ep{epoch}.npz"), **grad_norms)
 
         if log_writer is not None:
             log_writer.update(train_acc=train_stats['metr_acc'], head="my_train", step=epoch)

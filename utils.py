@@ -19,6 +19,7 @@ import torch.distributed as dist
 import math
 inf = math.inf
 import random
+from typing import List
 
 from tensorboardX import SummaryWriter
 
@@ -807,7 +808,7 @@ def collect_grad_norms(model, num_layers=12, num_heads=6):
                 for qkv_idx in range(3):  # 0: Q, 1: K, 2: V
                     qkv_grad_norms[layer_idx, head_idx, qkv_idx] = qkv_grad[qkv_idx, head_idx].norm().item()
         else:
-            print("qkv_weight.grad is None")
+            print("collect_grad_norms: qkv_weight.grad is None")
             print(qkv_weight.shape)
             print(qkv_weight.grad)
             exit(0)
@@ -1124,4 +1125,46 @@ class ShortDistributedSampler(torch.utils.data.DistributedSampler):
         """Number of samples per epoch for this rank."""
         return self.num_samples
 
+
+def set_requires_grad(model: nn.Module, keywords: List[str]):
+    """
+    Set parameters to require gradients based on keyword inclusion in their names.
+    """
+    requires_grad_names = []
+    num_params = 0
+    num_trainable = 0
+    for name, param in model.named_parameters():
+        num_params += param.numel()
+        if any(key in name for key in keywords):
+            param.requires_grad = True
+            requires_grad_names.append(name)
+            num_trainable += param.numel()
+        else:
+            param.requires_grad = False
+    global first_set_requires_grad
+    if first_set_requires_grad:
+        first_set_requires_grad = False
+
+
+def _set_train(model: nn.Module, keywords: List[str], prefix: str = ""):
+    train_names = []
+    for name, child in model.named_children():
+        fullname = ".".join([prefix, name])
+        if any(name.startswith(key) for key in keywords):
+            train_names.append(fullname)
+            child.train()
+        else:
+            train_names += _set_train(child, keywords, prefix=fullname)
+    return train_names
+
+
+def set_train(model: nn.Module, keywords: List[str]):
+    """
+    Set submodules to training mode based on keyword startswith condition.
+    """
+    model.train(False)
+    train_names = _set_train(model, keywords)
+    global first_set_train
+    if first_set_train:
+        first_set_train = False
 

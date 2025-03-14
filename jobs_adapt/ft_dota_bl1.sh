@@ -5,8 +5,8 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --partition=gpu
 #SBATCH --cpus-per-task=18
-#SBATCH --time=60:00:00
-#SBATCH --output=jobs_adapt/209_bl3_dota_%j.out
+#SBATCH --time=30:00:00
+#SBATCH --output=jobs_adapt/out/try_%j.out
 
 # For H100 nodes:
 #export NCCL_SOCKET_IFNAME="eno2np0"
@@ -17,7 +17,7 @@ module load 2023
 module load Anaconda3/2023.07-2
 
 export OMP_NUM_THREADS=16
-export MASTER_PORT=12209
+export MASTER_PORT=12345
 export MASTER_ADDR=$(hostname)
 export CUDA_HOME=/sw/arch/RHEL8/EB_production/2023/software/CUDA/12.1.1/
 
@@ -38,51 +38,59 @@ conda activate /home/sorlova/anaconda3/envs/video
 cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 
 # Set the path to save checkpoints
-OUTPUT_DIR='/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/ft_after_pretrain/bl3/dota_lr1e3_b56x1_dsampl1val2_ld06_aam6n3'
+#OUTPUT_DIR='logs/my_pretrain_ft_dota/bdd100k_extra_pretrain_vits/from-k400_full_regular_b200x4_mask075-session2_newaug'
+OUTPUT_DIR='/home/sorlova/repos/AITHENA/NewStage/VideoMAE/logs/rein/bl1_pt2/fuse-no_dota_lr1e2_b56x1_dsampl1val2_ld06_aam6n3'
 # path to data set 
 DATA_PATH='/gpfs/work3/0/tese0625/RiskNetData/DoTA_refined'
 # path to pretrain model
-MODEL_PATH='logs/my_pretrain/bl3_iv2s/bdd-capdata_lightcrop_b150x4_mask075/checkpoint-11.pth'
+# 'logs/pretrained/k400_vits/videomae_vits_k400_pretrain_ckpt.pth'
+# '/gpfs/work3/0/tese0625/VideoMAE_results/train_logs/my_pretrain/bl1_vits_vidmae_k400/PT2_bdd-capdata_lightcrop_b200x4_mask075/checkpoint-11.pth'
+MODEL_PATH='/gpfs/work3/0/tese0625/VideoMAE_results/train_logs/my_pretrain/bl1_vits_vidmae_k400/PT2_bdd-capdata_lightcrop_b200x4_mask075/checkpoint-11.pth'
 
-#     --bf16 \
+
+# nproc_per_node is the number of used GPUs
+# batch_size is set for one GPU
+# batch_size=16, nproc_per_node=2 => the effective batch_size is 32
+
+# --rein_link_token_to_query defides if we want to use Rein's tokens
+# if we want, then rein_fuse_method defines how we want to merge Rein's tokens with our features
+# rein_token_length is how many tokens we want to learn
+# 2 hrs per epoch
 torchrun --nproc_per_node=1 \
-    iv2_sm_run_frame_finetuning.py \
-    --model internvideo2_small_patch14_224 \
-    --no_cls_in_ckpt \
+    rein_run_frame_finetuning.py \
+    --model rein_vit_small_patch16_224 \
+    --rein_token_length 100 \
+    --rein_fuse_method simple_concat \
     --data_set DoTA \
+    --loss crossentropy \
     --nb_classes 2 \
-    --tubelet_size 1 \
-    --no_use_decord \
     --data_path ${DATA_PATH} \
     --finetune ${MODEL_PATH} \
     --log_dir ${OUTPUT_DIR} \
     --output_dir ${OUTPUT_DIR} \
-    --steps_per_print 10 \
     --batch_size 56 \
     --num_sample 1 \
     --input_size 224 \
     --short_side_size 224 \
     --save_ckpt_freq 1 \
-    --num_frames 8 \
-    --view_fps 5 \
+    --num_frames 16 \
     --sampling_rate 1 \
     --sampling_rate_val 2 \
     --nb_samples_per_epoch 50000 \
-    --num_workers 12 \
-    --warmup_epochs 5 \
-    --epochs 50 \
-    --lr 1e-3 \
-    --drop_path 0.1 \
-    --layer_decay 0.6 \
-    --aa rand-m6-n3-mstd0.5-inc1 \
-    --head_drop_path 0.1 \
-    --fc_drop_rate 0.0 \
-    --layer_scale_init_value 1e-5 \
     --opt adamw \
+    --num_workers 12 \
+    --lr 1e-2 \
+    --min_lr 1e-6 \
+    --warmup_lr 1e-6 \
+    --warmup_epochs 5 \
     --opt_betas 0.9 0.999 \
     --weight_decay 0.05 \
+    --drop_path 0.2 \
+    --layer_decay 0.6 \
+    --aa rand-m6-n3-mstd0.5-inc1 \
+    --epochs 50 \
     --test_num_segment 1 \
     --test_num_crop 1 \
     --dist_eval \
     --enable_deepspeed \
-    --zero_stage 0 \
+    --seed 42

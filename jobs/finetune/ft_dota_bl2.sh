@@ -6,7 +6,7 @@
 #SBATCH --partition=gpu
 #SBATCH --cpus-per-task=16
 #SBATCH --time=50:00:00
-#SBATCH --output=jobs_outs_ftpt/205_bl2_dota_%j.out
+#SBATCH --output=jobs_adapt/205_bl2_dota_%j.out
 
 # For H100 nodes:
 #export NCCL_SOCKET_IFNAME="eno2np0"
