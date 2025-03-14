@@ -18,11 +18,9 @@ def extract_threshold(col_name, prefix):
     return float(col_name.replace(prefix, ""))
 
 
-def plot_ID_5x2_curves(file_paths_left, file_paths_right, file_labels):
+def plot_ID_3x2_curves(file_paths_left, file_paths_right, file_labels):
     # Prepare lists to store curves for each metric for the left dataset
     mcc_curves_left = []
-    precision_curves_left = []
-    recall_curves_left = []
     acc_curves_left = []
     f1_curves_left = []
     
@@ -36,10 +34,6 @@ def plot_ID_5x2_curves(file_paths_left, file_paths_right, file_labels):
         
         mcc_cols = sorted([col for col in row.index if col.startswith("mcc_")],
                           key=lambda x: extract_threshold(x, "mcc_"))
-        prec_cols = sorted([col for col in row.index if col.startswith("p_")],
-                           key=lambda x: extract_threshold(x, "p_"))
-        rec_cols = sorted([col for col in row.index if col.startswith("r_")],
-                          key=lambda x: extract_threshold(x, "r_"))
         acc_cols = sorted([col for col in row.index if col.startswith("acc_")],
                           key=lambda x: extract_threshold(x, "acc_"))
         f1_cols = sorted([col for col in row.index if col.startswith("f1_")],
@@ -48,12 +42,6 @@ def plot_ID_5x2_curves(file_paths_left, file_paths_right, file_labels):
         mcc_thresholds = np.array([extract_threshold(col, "mcc_") for col in mcc_cols])
         mcc_values = row[mcc_cols].values.astype(float)
         
-        prec_thresholds = np.array([extract_threshold(col, "p_") for col in prec_cols])
-        prec_values = row[prec_cols].values.astype(float)
-        
-        rec_thresholds = np.array([extract_threshold(col, "r_") for col in rec_cols])
-        rec_values = row[rec_cols].values.astype(float)
-        
         acc_thresholds = np.array([extract_threshold(col, "acc_") for col in acc_cols])
         acc_values = row[acc_cols].values.astype(float)
         
@@ -61,15 +49,11 @@ def plot_ID_5x2_curves(file_paths_left, file_paths_right, file_labels):
         f1_values = row[f1_cols].values.astype(float)
         
         mcc_curves_left.append((mcc_thresholds, mcc_values))
-        precision_curves_left.append((prec_thresholds, prec_values))
-        recall_curves_left.append((rec_thresholds, rec_values))
         acc_curves_left.append((acc_thresholds, acc_values))
         f1_curves_left.append((f1_thresholds, f1_values))
     
     # Prepare lists for the right dataset
     mcc_curves_right = []
-    precision_curves_right = []
-    recall_curves_right = []
     acc_curves_right = []
     f1_curves_right = []
     
@@ -82,10 +66,6 @@ def plot_ID_5x2_curves(file_paths_left, file_paths_right, file_labels):
         
         mcc_cols = sorted([col for col in row.index if col.startswith("mcc_")],
                           key=lambda x: extract_threshold(x, "mcc_"))
-        prec_cols = sorted([col for col in row.index if col.startswith("p_")],
-                           key=lambda x: extract_threshold(x, "p_"))
-        rec_cols = sorted([col for col in row.index if col.startswith("r_")],
-                          key=lambda x: extract_threshold(x, "r_"))
         acc_cols = sorted([col for col in row.index if col.startswith("acc_")],
                           key=lambda x: extract_threshold(x, "acc_"))
         f1_cols = sorted([col for col in row.index if col.startswith("f1_")],
@@ -94,12 +74,6 @@ def plot_ID_5x2_curves(file_paths_left, file_paths_right, file_labels):
         mcc_thresholds = np.array([extract_threshold(col, "mcc_") for col in mcc_cols])
         mcc_values = row[mcc_cols].values.astype(float)
         
-        prec_thresholds = np.array([extract_threshold(col, "p_") for col in prec_cols])
-        prec_values = row[prec_cols].values.astype(float)
-        
-        rec_thresholds = np.array([extract_threshold(col, "r_") for col in rec_cols])
-        rec_values = row[rec_cols].values.astype(float)
-        
         acc_thresholds = np.array([extract_threshold(col, "acc_") for col in acc_cols])
         acc_values = row[acc_cols].values.astype(float)
         
@@ -107,32 +81,27 @@ def plot_ID_5x2_curves(file_paths_left, file_paths_right, file_labels):
         f1_values = row[f1_cols].values.astype(float)
         
         mcc_curves_right.append((mcc_thresholds, mcc_values))
-        precision_curves_right.append((prec_thresholds, prec_values))
-        recall_curves_right.append((rec_thresholds, rec_values))
         acc_curves_right.append((acc_thresholds, acc_values))
         f1_curves_right.append((f1_thresholds, f1_values))
     
     # Define metric titles and store the corresponding curves for left/right in dictionaries.
-    metric_titles = ["MCC", "Precision", "Recall", "Accuracy", "F1"]
+    metric_titles = ["MCC", "Accuracy", "F1"]
     metrics_left = {
         "MCC": mcc_curves_left,
-        "Precision": precision_curves_left,
-        "Recall": recall_curves_left,
         "Accuracy": acc_curves_left,
         "F1": f1_curves_left
     }
     metrics_right = {
         "MCC": mcc_curves_right,
-        "Precision": precision_curves_right,
-        "Recall": recall_curves_right,
         "Accuracy": acc_curves_right,
         "F1": f1_curves_right
     }
     
     # Create a figure with 6 rows x 2 columns using GridSpec.
     # Row 0 will be for the legend. Rows 1-5 for the 5 metrics.
-    fig = plt.figure(figsize=(15, 20))
-    gs = gridspec.GridSpec(6, 2, height_ratios=[0.5, 1, 1, 1, 1, 1])
+    fig = plt.figure(figsize=(9, 12))
+    gs = gridspec.GridSpec(4, 2, height_ratios=[0.5, 1, 1, 1])
+    gs.update(hspace=0.3)
     
     # Create the legend axis spanning both columns in the top row.
     ax_legend = fig.add_subplot(gs[0, :])
@@ -157,14 +126,14 @@ def plot_ID_5x2_curves(file_paths_left, file_paths_right, file_labels):
                 label=label,
                 color=c,
                 marker=m,
-                markersize=ms/10,
-                markevery=5,
+                markersize=ms/7,
+                markevery=8,
                 #linewidth=1.5,  # optional line width
                 linestyle=ls 
             )
         #ax_left.set_xlabel("Threshold")
         ax_left.set_ylabel(metric)
-        ax_left.set_title(f"{metric} vs. Threshold (DoTA)", pad=10)
+        ax_left.set_title(f"{metric} vs. Threshold (DoTA)", pad=5)
         ax_left.grid(True)
         
         # Right subplot for the current metric
@@ -180,14 +149,14 @@ def plot_ID_5x2_curves(file_paths_left, file_paths_right, file_labels):
                 label=label,
                 color=c,
                 marker=m,
-                markersize=ms/10,
-                markevery=5,
+                markersize=ms/7,
+                markevery=8,
                 #linewidth=1.5,  # optional line width
                 linestyle=ls
             )
         #ax_right.set_xlabel("Threshold")
         ax_right.set_ylabel(metric)
-        ax_right.set_title(f"{metric} vs. Threshold (DADA2K)", pad=10)
+        ax_right.set_title(f"{metric} vs. Threshold (DADA2K)", pad=5)
         ax_right.grid(True)
         
         # For the first metric (MCC), capture the legend handles/labels.
@@ -195,10 +164,10 @@ def plot_ID_5x2_curves(file_paths_left, file_paths_right, file_labels):
             legend_handles, legend_labels = ax_left.get_legend_handles_labels()
     
     # Create the legend in the top row.
-    ax_legend.legend(legend_handles, legend_labels, loc="center", ncol=5)
+    ax_legend.legend(legend_handles, legend_labels, loc="center", ncol=5, fontsize=14)
     
     # Save and show the figure.
-    fig.savefig("anaysis/plots/plot_5x2_metrics.png", dpi=300, bbox_inches="tight")
+    fig.savefig("anaysis/plots/plot_3x2_metrics.png", dpi=300, bbox_inches="tight")
     plt.show()
 
 # Example usage:
@@ -218,6 +187,6 @@ if __name__ == "__main__":
     #file_labels = [os.path.basename(os.path.dirname(fp)).split("_")[0] for fp in file_paths]  # labels for the curves
     #print(file_labels)
 
-    plot_ID_5x2_curves(file_paths_left=file_paths_dota, file_paths_right=file_paths_dada, file_labels=labels)
+    plot_ID_3x2_curves(file_paths_left=file_paths_dota, file_paths_right=file_paths_dada, file_labels=labels)
 
 

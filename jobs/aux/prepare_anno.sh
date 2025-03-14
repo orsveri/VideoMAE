@@ -36,4 +36,5 @@ cd /home/sorlova/repos/AITHENA/NewStage/VideoMAE
 #python data_tools/dada/halfsplit.py
 #python data_tools/dada/anno_for_predictions.py
 #python data_tools/dota/anno_for_predictions.py
-python anaysis/metrics_by_categories.py
+#python anaysis/metrics_by_categories.py
+python anaysis/metrics_general.py
